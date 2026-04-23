@@ -1,93 +1,142 @@
-# :package_description
+# jmluang/sso-consumer
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/:vendor_slug/:package_slug.svg?style=flat-square)](https://packagist.org/packages/:vendor_slug/:package_slug)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/:vendor_slug/:package_slug/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/:vendor_slug/:package_slug/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/:vendor_slug/:package_slug/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/:vendor_slug/:package_slug/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/:vendor_slug/:package_slug.svg?style=flat-square)](https://packagist.org/packages/:vendor_slug/:package_slug)
-<!--delete-->
----
-This repo can be used to scaffold a Laravel package. Follow these steps to get started:
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/jmluang/sso-consumer.svg?style=flat-square)](https://packagist.org/packages/jmluang/sso-consumer)
+[![Tests](https://img.shields.io/github/actions/workflow/status/jmluang/sso-consumer/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/jmluang/sso-consumer/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE.md)
 
-1. Press the "Use this template" button at the top of this repo to create a new repo with the contents of this skeleton.
-2. Run "php ./configure.php" to run a script that will replace all placeholders throughout all the files.
-3. Have fun creating your package.
-4. If you need help creating a package, consider picking up our <a href="https://laravelpackage.training">Laravel Package Training</a> video course.
----
-<!--/delete-->
-This is where your description should go. Limit it to a paragraph or two. Consider adding a small example.
+A Laravel consumer package for the **fv-portal** SSO system. Verifies portal-signed JWT tickets and bridges upstream identity to the consuming app's local admin auth.
 
-## Support us
+Paired with the private [`jmluang/fv-portal`](https://github.com/jmluang/fv-portal) application, which signs the tickets. Architecture and contract specs live in the portal repo under `docs/sso/`; the key pieces (JWT claims v1, error codes) are mirrored below for consumers.
 
-[<img src="https://github-ads.s3.eu-central-1.amazonaws.com/:package_name.jpg?t=1" width="419px" />](https://spatie.be/github-ad-click/:package_name)
+## Requirements
 
-We invest a lot of resources into creating [best in class open source packages](https://spatie.be/open-source). You can support us by [buying one of our paid products](https://spatie.be/open-source/support-us).
-
-We highly appreciate you sending us a postcard from your hometown, mentioning which of our package(s) you are using. You'll find our address on [our contact page](https://spatie.be/about-us). We publish all received postcards on [our virtual postcard wall](https://spatie.be/open-source/postcards).
+- PHP `^8.3`
+- Laravel `^11.0 || ^12.0 || ^13.0`
 
 ## Installation
 
-You can install the package via composer:
-
 ```bash
-composer require :vendor_slug/:package_slug
+composer require jmluang/sso-consumer:^1.0
 ```
 
-You can publish and run the migrations with:
+Publish the config:
 
 ```bash
-php artisan vendor:publish --tag=":package_slug-migrations"
-php artisan migrate
+php artisan vendor:publish --tag=sso-consumer-config
 ```
 
-You can publish the config file with:
+Optionally publish views & translations:
 
 ```bash
-php artisan vendor:publish --tag=":package_slug-config"
+php artisan vendor:publish --tag=sso-consumer-views
+php artisan vendor:publish --tag=sso-consumer-lang
 ```
 
-This is the contents of the published config file:
+## Configuration
+
+Fill in `.env`:
+
+```
+SSO_PORTAL_URL=https://protal.florentiavillage.com
+SSO_SYSTEM_CODE=xiaohongshu          # or `gd`, matching tenant_registry.system_code on portal
+SSO_PORTAL_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+```
+
+Then point the resolver to your implementation in `config/sso-consumer.php`:
 
 ```php
-return [
-];
+'resolver' => \App\Sso\AppSsoUserResolver::class,
 ```
 
-Optionally, you can publish the views using
+See [docs/sso/consumer/integration-guide.md](../fv-portal/docs/sso/consumer/integration-guide.md) (if docs live in the portal repo) for the full 10-step setup.
 
-```bash
-php artisan vendor:publish --tag=":package_slug-views"
+## How it works
+
+```
+Portal (signs RS256 ticket)
+   │  302 → https://{tenant_domain}/admin-app/sso/consume?ticket=<jwt>
+   ▼
+This package's ConsumeController:
+   1. Verify JWT (signature, alg, exp, iss, v, aud, tenant_domain)
+   2. Claim jti in cache (one-time-use guard)
+   3. Call your SsoUserResolver::resolve($claims, $request)
+   4. Dispatch SsoLoginSucceeded → 302 to success_redirect
+   On any failure → dispatch SsoLoginFailed → render error page with
+                    "Return to portal" action.
 ```
 
-## Usage
+## JWT Claims (v1)
+
+Ticket is RS256-signed by the portal; consumer must verify using the portal's public key.
+
+| Claim | Type | Required | Notes |
+|---|---|---|---|
+| `iss` | string | ✓ | Must be `sso-portal` |
+| `aud` | string | ✓ | Must equal `config('sso-consumer.system_code')` |
+| `sub` | string | ✓ | User email (same as `email`) |
+| `email` | string | ✓ | |
+| `tenant_domain` | string | ✓ | Must equal `$request->getHost()` |
+| `tenant_id` | int | ✓ | |
+| `tenant_system` | string | ✓ | Same as `aud` |
+| `jti` | string | ✓ | 32 hex chars, one-time-use |
+| `v` | int | ✓ | Currently `1` |
+| `iat` / `exp` | int | ✓ | 120s TTL recommended |
+| `nbf` | int | optional | |
+
+## Error Codes
+
+Rendered on the error page and emitted via `SsoLoginFailed` events.
+
+`ticket_missing`, `ticket_invalid`, `ticket_expired`, `ticket_replayed`, `ticket_version_unsupported`, `audience_mismatch`, `tenant_mismatch`, `user_not_found`, `resolver_failed`
+
+## The `SsoUserResolver` contract
+
+The package does **not** touch `Auth` or `session`. You implement:
 
 ```php
-$:variable = new VendorName\Skeleton();
-echo $:variable->echoPhrase('Hello, VendorName!');
+namespace App\Sso;
+
+use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Http\Request;
+use Jmluang\SsoConsumer\Contracts\SsoUserResolver;
+
+class AppSsoUserResolver implements SsoUserResolver
+{
+    public function resolve(array $claims, Request $request): ?Authenticatable
+    {
+        // Find by $claims['email']; login on the appropriate guard;
+        // call session()->regenerate(); return the user or null.
+    }
+}
+```
+
+## Events
+
+- `Jmluang\SsoConsumer\Events\SsoLoginSucceeded` — `$user`, `$claims`, `$requestId`
+- `Jmluang\SsoConsumer\Events\SsoLoginFailed` — `$errorCode`, `$claims?`, `$rawTicketHead?`, `$requestId`, `$exception?`
+
+Write your own listeners for audit logging / alerting.
+
+## Commands
+
+```bash
+php artisan sso:check    # verify config is production-ready
 ```
 
 ## Testing
 
 ```bash
 composer test
+composer analyse
+composer format
 ```
 
-## Changelog
+## Versioning
 
-Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
-
-## Contributing
-
-Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
-
-## Security Vulnerabilities
-
-Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
-
-## Credits
-
-- [:author_name](https://github.com/:author_username)
-- [All Contributors](../../contributors)
+- `0.x.y` — prerelease, API may change
+- `1.x.y` — semver stable
+- Adding optional JWT claims → minor; removing/renaming claims → major
 
 ## License
 
-The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+MIT — see [LICENSE.md](LICENSE.md).

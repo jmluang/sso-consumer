@@ -1,37 +1,37 @@
 <?php
 
-namespace VendorName\Skeleton\Tests;
+declare(strict_types=1);
 
-use Illuminate\Database\Eloquent\Factories\Factory;
+namespace Jmluang\SsoConsumer\Tests;
+
+use Jmluang\SsoConsumer\SsoConsumerServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
-use VendorName\Skeleton\SkeletonServiceProvider;
 
-class TestCase extends Orchestra
+abstract class TestCase extends Orchestra
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'VendorName\\Skeleton\\Database\\Factories\\'.class_basename($modelName).'Factory'
-        );
-    }
-
-    protected function getPackageProviders($app)
+    /**
+     * @param  \Illuminate\Foundation\Application  $app
+     * @return array<int, class-string>
+     */
+    protected function getPackageProviders($app): array
     {
         return [
-            SkeletonServiceProvider::class,
+            SsoConsumerServiceProvider::class,
         ];
     }
 
-    public function getEnvironmentSetUp($app)
+    /**
+     * @param  \Illuminate\Foundation\Application  $app
+     */
+    protected function defineEnvironment($app): void
     {
-        config()->set('database.default', 'testing');
+        $app['config']->set('database.default', 'testing');
+        $app['config']->set('cache.default', 'array');
 
-        /*
-         foreach (\Illuminate\Support\Facades\File::allFiles(__DIR__ . '/../database/migrations') as $migration) {
-            (include $migration->getRealPath())->up();
-         }
-         */
+        // Sensible defaults for tests; individual tests can override.
+        $app['config']->set('sso-consumer.system_code', 'xiaohongshu');
+        $app['config']->set('sso-consumer.portal_url', 'https://protal.florentiavillage.com');
+        $app['config']->set('sso-consumer.consume_path', '/admin-app/sso/consume');
+        $app['config']->set('sso-consumer.consume_middleware', ['web']);
     }
 }
