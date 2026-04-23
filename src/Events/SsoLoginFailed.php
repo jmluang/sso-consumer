@@ -12,8 +12,8 @@ class SsoLoginFailed
     use Dispatchable;
 
     /**
-     * @param  array<string, mixed>|null  $claims   Partially parsed claims, if available.
-     * @param  string|null                $rawTicketHead  First 8 chars of the ticket + "..." (for log correlation).
+     * @param  array<string, mixed>|null  $claims  Partially parsed claims, if available.
+     * @param  string|null  $rawTicketHead  First 8 chars of the ticket + "..." (for log correlation).
      */
     public function __construct(
         public readonly string $errorCode,
