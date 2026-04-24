@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Jmluang\SsoConsumer\View\Components;
 
+use Illuminate\Contracts\View\View;
+use Illuminate\Support\Facades\View as ViewFactory;
 use Illuminate\View\Component;
-use Illuminate\View\View;
 use Jmluang\SsoConsumer\Support\PortalUrlBuilder;
 
 class LoginButton extends Component
@@ -22,6 +23,6 @@ class LoginButton extends Component
 
     public function render(): View
     {
-        return view('sso-consumer::components.login-button');
+        return ViewFactory::make('sso-consumer::components.login-button');
     }
 }

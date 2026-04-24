@@ -16,3 +16,4 @@ All notable changes to `jmluang/sso-consumer` will be documented in this file.
 - `ConsumeController::__invoke()` end-to-end ticket consumption.
 - `sso:check` production readiness command.
 - PHPUnit fixtures and tests, including RSA keys that are strictly for tests and must never be used in production ticket signing.
+- PHPStan level 5 clean (LoginButton view-string fix + baseline for package-config env() false positive).
