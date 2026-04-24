@@ -11,9 +11,7 @@ All notable changes to `jmluang/sso-consumer` will be documented in this file.
 - `SsoUserResolver` contract for the consuming app's login bridge.
 - `SsoLoginSucceeded` / `SsoLoginFailed` events.
 - Zh_CN and en translations for error messages.
-
-### Not yet implemented (stubs with TODO)
-- `TicketVerifier::verify()` — RS256 + claim checks.
-- `JtiReplayGuard::claim()` — cache-based one-time-use guard.
-- `ConsumeController::__invoke()` — end-to-end handling.
-- `sso:check` command.
+- `TicketVerifier::verify()` with RS256, leeway, and v1 claim validation.
+- `JtiReplayGuard::claim()` with atomic cache `add()` replay protection.
+- `ConsumeController::__invoke()` end-to-end ticket consumption.
+- `sso:check` production readiness command.

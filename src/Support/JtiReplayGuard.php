@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Jmluang\SsoConsumer\Support;
 
+use Illuminate\Support\Facades\Cache;
+use Jmluang\SsoConsumer\Exceptions\ReplayedTicketException;
+
 class JtiReplayGuard
 {
     /**
@@ -22,6 +25,11 @@ class JtiReplayGuard
      */
     public function claim(string $jti, int $ttlSeconds): void
     {
-        throw new \LogicException('JtiReplayGuard::claim not implemented yet.');
+        $prefix = (string) config('sso-consumer.replay_cache_prefix', 'sso_consumer:jti:');
+        $store = Cache::store(config('sso-consumer.replay_cache_store'));
+
+        if (! $store->add($prefix.$jti, 1, $ttlSeconds)) {
+            throw new ReplayedTicketException;
+        }
     }
 }
