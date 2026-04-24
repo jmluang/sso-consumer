@@ -15,3 +15,4 @@ All notable changes to `jmluang/sso-consumer` will be documented in this file.
 - `JtiReplayGuard::claim()` with atomic cache `add()` replay protection.
 - `ConsumeController::__invoke()` end-to-end ticket consumption.
 - `sso:check` production readiness command.
+- PHPUnit fixtures and tests, including RSA keys that are strictly for tests and must never be used in production ticket signing.

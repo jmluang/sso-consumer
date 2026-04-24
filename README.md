@@ -125,6 +125,8 @@ php artisan sso:check    # verify config is production-ready
 
 ## Testing
 
+The RSA key pair under `tests/Fixtures/keys/` is only for automated tests. Never use it to sign or verify production SSO tickets.
+
 ```bash
 composer test
 composer analyse
