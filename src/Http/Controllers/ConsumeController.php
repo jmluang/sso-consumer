@@ -31,7 +31,7 @@ class ConsumeController extends Controller
      *
      * Flow (see docs/sso/contracts/consume-endpoint.md):
      *   1. Reject missing ticket → 302 failure_redirect with flash.
-     *   2. TicketVerifier::verify($ticket, $request->getHttpHost())
+     *   2. TicketVerifier::verify($ticket, configured/request host)
      *      throws one of the SsoConsumer exceptions on any failure.
      *   3. JtiReplayGuard::claim($jti, $ttl) — throws ReplayedTicketException.
      *   4. app(SsoUserResolver::class)->resolve($claims, $request)
@@ -58,8 +58,8 @@ class ConsumeController extends Controller
         $claims = null;
 
         try {
-            $claims = $this->verifier->verify($ticket, $request->getHttpHost());
-            $this->guard->claim((string) $claims['jti'], max(1, ((int) $claims['exp']) - time()));
+            $claims = $this->verifier->verify($ticket, $this->expectedHost($request));
+            $this->guard->claim((string) $claims['jti'], $this->replayTtlSeconds((int) $claims['exp']));
 
             try {
                 $user = app(SsoUserResolver::class)->resolve($claims, $request);
@@ -99,6 +99,24 @@ class ConsumeController extends Controller
         return new Response('', 302, ['Location' => $location]);
     }
 
+    private function expectedHost(Request $request): string
+    {
+        $configuredHost = config('sso-consumer.expected_host');
+
+        if (is_string($configuredHost) && trim($configuredHost) !== '') {
+            return trim($configuredHost);
+        }
+
+        return $request->getHttpHost();
+    }
+
+    private function replayTtlSeconds(int $expiresAt): int
+    {
+        $ttlWithLeeway = $expiresAt - time() + (int) config('sso-consumer.leeway_seconds', 5);
+
+        return max((int) config('sso-consumer.replay_min_ttl_seconds', 60), $ttlWithLeeway);
+    }
+
     private function errorResponse(string $errorCode, string $requestId): Response
     {
         return response()->view((string) config('sso-consumer.error_view', 'sso-consumer::error'), [
@@ -107,7 +125,7 @@ class ConsumeController extends Controller
             'portalUrl' => app(PortalUrlBuilder::class)->portalUrl(),
             'loginUrl' => config('sso-consumer.failure_redirect'),
             'requestId' => $requestId,
-        ], 200);
+        ], 400);
     }
 
     private function ticketHead(string $ticket): string

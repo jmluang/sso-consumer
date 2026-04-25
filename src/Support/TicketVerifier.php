@@ -30,7 +30,7 @@ class TicketVerifier
      *   7. iat <= now + leeway     → InvalidTicketException
      *   8. nbf <= now + leeway     → InvalidTicketException (if present)
      *   9. aud == system_code      → AudienceMismatchException
-     *  10. tenant_domain == request HTTP host → TenantMismatchException
+     *  10. tenant_domain == expected host → TenantMismatchException
      *
      * Replay check (jti) is done by JtiReplayGuard, not here.
      *
@@ -38,7 +38,7 @@ class TicketVerifier
      *
      * @return array<string, mixed>
      */
-    public function verify(string $ticket, string $requestHttpHost): array
+    public function verify(string $ticket, string $expectedHost): array
     {
         $header = $this->decodeHeader($ticket);
 
@@ -80,7 +80,7 @@ class TicketVerifier
             throw new AudienceMismatchException;
         }
 
-        if (($claims['tenant_domain'] ?? null) !== $requestHttpHost) {
+        if (($claims['tenant_domain'] ?? null) !== $expectedHost) {
             throw new TenantMismatchException;
         }
 

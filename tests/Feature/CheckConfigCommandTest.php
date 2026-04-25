@@ -15,6 +15,7 @@ class CheckConfigCommandTest extends TestCase
         Http::fake([
             'https://protal.florentiavillage.com' => Http::response('', 302),
         ]);
+        config()->set('sso-consumer.expected_host', 'shanghai.florentiavillage.com');
         config()->set('sso-consumer.resolver', FakeSsoUserResolver::class);
         config()->set('sso-consumer.consume_middleware', []);
 
@@ -22,6 +23,20 @@ class CheckConfigCommandTest extends TestCase
             ->expectsOutputToContain('system code')
             ->expectsOutputToContain('public key')
             ->assertExitCode(0);
+    }
+
+    public function test_production_configuration_requires_expected_host(): void
+    {
+        Http::fake([
+            'https://protal.florentiavillage.com' => Http::response('', 302),
+        ]);
+        $this->app['env'] = 'production';
+        config()->set('sso-consumer.expected_host', null);
+        config()->set('sso-consumer.resolver', FakeSsoUserResolver::class);
+
+        $this->artisan('sso:check')
+            ->expectsOutputToContain('expected host')
+            ->assertExitCode(1);
     }
 
     public function test_empty_public_key_exits_with_failure(): void

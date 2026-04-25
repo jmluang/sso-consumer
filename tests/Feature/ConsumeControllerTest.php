@@ -65,6 +65,50 @@ class ConsumeControllerTest extends TestCase
         $response->assertRedirect('/admin-app/dashboard');
     }
 
+    public function test_configured_expected_host_is_used_instead_of_request_host(): void
+    {
+        Event::fake();
+        config()->set('sso-consumer.expected_host', 'shanghai.florentiavillage.com');
+        $claims = TicketFactory::valid([
+            'tenant_domain' => 'shanghai.florentiavillage.com',
+        ])[1];
+        $this->bindVerifierExpectingHost('shanghai.florentiavillage.com', $claims);
+        $this->bindResolverReturning(new GenericUser(['id' => 123, 'email' => $claims['email']]));
+
+        $response = $this->get('http://spoofed.example.test/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertRedirect('/admin-app/dashboard');
+    }
+
+    public function test_replay_ttl_includes_leeway_and_minimum_floor(): void
+    {
+        Event::fake();
+        config()->set('sso-consumer.leeway_seconds', 5);
+        config()->set('sso-consumer.replay_min_ttl_seconds', 60);
+        $claims = TicketFactory::valid([
+            'exp' => time() - 1,
+        ])[1];
+        $this->bindVerifierReturning($claims);
+        $this->app->instance(JtiReplayGuard::class, new class extends JtiReplayGuard
+        {
+            public int $ttlSeconds = 0;
+
+            public function claim(string $jti, int $ttlSeconds): void
+            {
+                $this->ttlSeconds = $ttlSeconds;
+            }
+        });
+        $this->bindResolverReturning(new GenericUser(['id' => 123, 'email' => $claims['email']]));
+
+        $response = $this
+            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->get('/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertRedirect('/admin-app/dashboard');
+        $guard = $this->app->make(JtiReplayGuard::class);
+        $this->assertSame(60, $guard->ttlSeconds);
+    }
+
     public function test_missing_ticket_redirects_to_failure_redirect_with_flash_and_failed_event(): void
     {
         Event::fake();
@@ -97,7 +141,7 @@ class ConsumeControllerTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
-        $response->assertOk();
+        $response->assertStatus(400);
         $response->assertSee($errorCode);
         Event::assertDispatched(
             SsoLoginFailed::class,
@@ -125,7 +169,7 @@ class ConsumeControllerTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
-        $response->assertOk();
+        $response->assertStatus(400);
         $response->assertSee('ticket_replayed');
         Event::assertDispatched(
             SsoLoginFailed::class,
@@ -145,7 +189,7 @@ class ConsumeControllerTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
-        $response->assertOk();
+        $response->assertStatus(400);
         $response->assertSee('user_not_found');
         Event::assertDispatched(
             SsoLoginFailed::class,
@@ -178,7 +222,7 @@ class ConsumeControllerTest extends TestCase
             ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
-        $response->assertOk();
+        $response->assertStatus(400);
         $response->assertSee('resolver_failed');
         $handler->shouldHaveReceived('report')
             ->once()

@@ -20,6 +20,7 @@ return [
     | on the portal; verified against the JWT `aud` claim.
     */
     'system_code' => env('SSO_SYSTEM_CODE'),
+    'expected_host' => env('SSO_EXPECTED_HOST'),
 
     /*
     |--------------------------------------------------------------------------
@@ -77,6 +78,7 @@ return [
     */
     'replay_cache_store' => null,
     'replay_cache_prefix' => 'sso_consumer:jti:',
+    'replay_min_ttl_seconds' => 60,
 
     /*
     |--------------------------------------------------------------------------

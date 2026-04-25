@@ -31,6 +31,7 @@ class CheckConfigCommand extends Command
             $this->checkSystemCode(),
             $this->checkPortalUrl(),
             $this->checkPublicKey(),
+            $this->checkExpectedHost(),
             $this->checkResolver(),
             $this->checkCacheStore(),
             $this->checkConsumeMiddleware(),
@@ -109,6 +110,29 @@ class CheckConfigCommand extends Command
             $isRsa,
             'public key',
             $isRsa ? 'valid RSA public key' : 'not an RSA public key',
+        ];
+    }
+
+    /**
+     * @return array{0: bool, 1: string, 2: string}
+     */
+    private function checkExpectedHost(): array
+    {
+        $host = config('sso-consumer.expected_host');
+        $isConfigured = is_string($host) && trim($host) !== '';
+
+        if (app()->isProduction()) {
+            return [
+                $isConfigured,
+                'expected host',
+                $isConfigured ? 'configured' : 'missing in production',
+            ];
+        }
+
+        return [
+            true,
+            'expected host',
+            $isConfigured ? 'configured' : 'optional outside production',
         ];
     }
 
