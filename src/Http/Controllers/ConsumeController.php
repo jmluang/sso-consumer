@@ -31,7 +31,7 @@ class ConsumeController extends Controller
      *
      * Flow (see docs/sso/contracts/consume-endpoint.md):
      *   1. Reject missing ticket → 302 failure_redirect with flash.
-     *   2. TicketVerifier::verify($ticket, $request->getHost())
+     *   2. TicketVerifier::verify($ticket, $request->getHttpHost())
      *      throws one of the SsoConsumer exceptions on any failure.
      *   3. JtiReplayGuard::claim($jti, $ttl) — throws ReplayedTicketException.
      *   4. app(SsoUserResolver::class)->resolve($claims, $request)
@@ -58,7 +58,7 @@ class ConsumeController extends Controller
         $claims = null;
 
         try {
-            $claims = $this->verifier->verify($ticket, $request->getHost());
+            $claims = $this->verifier->verify($ticket, $request->getHttpHost());
             $this->guard->claim((string) $claims['jti'], max(1, ((int) $claims['exp']) - time()));
 
             try {

@@ -27,6 +27,7 @@ use Jmluang\SsoConsumer\Support\TicketVerifier;
 use Jmluang\SsoConsumer\Tests\Fixtures\TicketFactory;
 use Jmluang\SsoConsumer\Tests\TestCase;
 use Mockery;
+use PHPUnit\Framework\Assert;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 
@@ -48,6 +49,20 @@ class ConsumeControllerTest extends TestCase
             fn (SsoLoginSucceeded $event): bool => $event->claims['jti'] === $claims['jti']
                 && $event->user->getAuthIdentifier() === 123
         );
+    }
+
+    public function test_consume_verifies_against_http_host_with_non_standard_port(): void
+    {
+        Event::fake();
+        $claims = TicketFactory::valid([
+            'tenant_domain' => '127.0.0.1:8000',
+        ])[1];
+        $this->bindVerifierExpectingHost('127.0.0.1:8000', $claims);
+        $this->bindResolverReturning(new GenericUser(['id' => 123, 'email' => $claims['email']]));
+
+        $response = $this->get('http://127.0.0.1:8000/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertRedirect('/admin-app/dashboard');
     }
 
     public function test_missing_ticket_redirects_to_failure_redirect_with_flash_and_failed_event(): void
@@ -219,6 +234,30 @@ class ConsumeControllerTest extends TestCase
             public function verify(string $ticket, string $requestHost): array
             {
                 throw $this->exception;
+            }
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $claims
+     */
+    private function bindVerifierExpectingHost(string $expectedHost, array $claims): void
+    {
+        $this->app->instance(TicketVerifier::class, new class($expectedHost, $claims) extends TicketVerifier
+        {
+            /**
+             * @param  array<string, mixed>  $claims
+             */
+            public function __construct(
+                private readonly string $expectedHost,
+                private readonly array $claims,
+            ) {}
+
+            public function verify(string $ticket, string $requestHost): array
+            {
+                Assert::assertSame($this->expectedHost, $requestHost);
+
+                return $this->claims;
             }
         });
     }
