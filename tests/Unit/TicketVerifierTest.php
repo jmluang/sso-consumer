@@ -12,6 +12,7 @@ use Jmluang\SsoConsumer\Exceptions\UnsupportedVersionException;
 use Jmluang\SsoConsumer\Support\TicketVerifier;
 use Jmluang\SsoConsumer\Tests\Fixtures\TicketFactory;
 use Jmluang\SsoConsumer\Tests\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 class TicketVerifierTest extends TestCase
 {
@@ -42,6 +43,43 @@ class TicketVerifierTest extends TestCase
     public function test_v2_ticket_missing_phone_throws_invalid_ticket_exception(): void
     {
         [$ticket] = TicketFactory::valid(['phone' => null]);
+
+        $this->expectException(InvalidTicketException::class);
+
+        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+    }
+
+    #[DataProvider('requiredClaimProvider')]
+    public function test_ticket_missing_required_claim_throws_invalid_ticket_exception(string $claim): void
+    {
+        [$ticket] = TicketFactory::valid([$claim => null]);
+
+        $this->expectException(InvalidTicketException::class);
+
+        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+    }
+
+    public function test_v2_ticket_with_sub_different_from_phone_throws_invalid_ticket_exception(): void
+    {
+        [$ticket] = TicketFactory::valid(['sub' => 'different-subject']);
+
+        $this->expectException(InvalidTicketException::class);
+
+        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+    }
+
+    public function test_ticket_with_invalid_jti_shape_throws_invalid_ticket_exception(): void
+    {
+        [$ticket] = TicketFactory::valid(['jti' => 'not-hex']);
+
+        $this->expectException(InvalidTicketException::class);
+
+        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+    }
+
+    public function test_ticket_with_tenant_system_different_from_audience_throws_invalid_ticket_exception(): void
+    {
+        [$ticket] = TicketFactory::valid(['tenant_system' => 'gd']);
 
         $this->expectException(InvalidTicketException::class);
 
@@ -142,5 +180,24 @@ class TicketVerifierTest extends TestCase
             TicketFactory::wrongTenantDomain('beijing.florentiavillage.com'),
             'shanghai.florentiavillage.com'
         );
+    }
+
+    /**
+     * @return array<string, array{0: string}>
+     */
+    public static function requiredClaimProvider(): array
+    {
+        return [
+            'iss' => ['iss'],
+            'aud' => ['aud'],
+            'sub' => ['sub'],
+            'tenant_domain' => ['tenant_domain'],
+            'tenant_id' => ['tenant_id'],
+            'tenant_system' => ['tenant_system'],
+            'jti' => ['jti'],
+            'v' => ['v'],
+            'iat' => ['iat'],
+            'exp' => ['exp'],
+        ];
     }
 }

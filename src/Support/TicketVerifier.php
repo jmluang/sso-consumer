@@ -20,21 +20,20 @@ class TicketVerifier
     /**
      * Verify a portal-signed JWT ticket and return its claims.
      *
-     * Checks (in this order — see docs/sso/contracts/jwt-claims-v1.md §验证规则):
-     *   1. Parse structure        → InvalidTicketException
-     *   2. alg == RS256           → InvalidTicketException
+     * Checks (in this order):
+     *   1. Parse structure         → InvalidTicketException
+     *   2. alg == RS256            → InvalidTicketException
      *   3. Signature via public_key → InvalidTicketException
-     *   4. v in supported_versions → UnsupportedVersionException
-     *   5. iss == config issuer    → InvalidTicketException
-     *   6. exp > now (leeway)      → ExpiredTicketException
-     *   7. iat <= now + leeway     → InvalidTicketException
-     *   8. nbf <= now + leeway     → InvalidTicketException (if present)
-     *   9. aud == system_code      → AudienceMismatchException
-     *  10. tenant_domain == expected host → TenantMismatchException
+     *   4. Required claim shape     → InvalidTicketException
+     *   5. v in supported_versions → UnsupportedVersionException
+     *   6. iss == config issuer     → InvalidTicketException
+     *   7. exp > now (leeway)       → ExpiredTicketException
+     *   8. iat <= now + leeway      → InvalidTicketException
+     *   9. nbf <= now + leeway      → InvalidTicketException (if present)
+     *  10. aud == system_code       → AudienceMismatchException
+     *  11. tenant_domain == expected host → TenantMismatchException
      *
      * Replay check (jti) is done by JtiReplayGuard, not here.
-     *
-     * TODO(OpenCode): implement using firebase/php-jwt.
      *
      * @return array<string, mixed>
      */
@@ -68,6 +67,8 @@ class TicketVerifier
 
         $claims = $this->payloadToArray($payload);
 
+        $this->validateRequiredClaims($claims);
+
         if (! in_array($claims['v'] ?? null, (array) config('sso-consumer.supported_versions', [1]), true)) {
             throw new UnsupportedVersionException;
         }
@@ -92,6 +93,36 @@ class TicketVerifier
     /**
      * @param  array<string, mixed>  $claims
      */
+    private function validateRequiredClaims(array $claims): void
+    {
+        foreach (['iss', 'aud', 'sub', 'tenant_domain', 'tenant_system', 'jti'] as $claim) {
+            if (! isset($claims[$claim]) || ! is_string($claims[$claim]) || trim($claims[$claim]) === '') {
+                throw new InvalidTicketException;
+            }
+        }
+
+        foreach (['tenant_id', 'v', 'iat', 'exp'] as $claim) {
+            if (! isset($claims[$claim]) || ! is_int($claims[$claim])) {
+                throw new InvalidTicketException;
+            }
+        }
+
+        if (isset($claims['nbf']) && ! is_int($claims['nbf'])) {
+            throw new InvalidTicketException;
+        }
+
+        if (! preg_match('/\A[a-f0-9]{32}\z/', $claims['jti'])) {
+            throw new InvalidTicketException;
+        }
+
+        if ($claims['tenant_system'] !== $claims['aud']) {
+            throw new InvalidTicketException;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $claims
+     */
     private function validateClaimShape(array $claims): void
     {
         if (($claims['v'] ?? null) === 2) {
@@ -107,11 +138,19 @@ class TicketVerifier
                 throw new InvalidTicketException;
             }
 
+            if ($claims['sub'] !== $claims['phone']) {
+                throw new InvalidTicketException;
+            }
+
             return;
         }
 
         if (($claims['v'] ?? null) === 1
             && (! isset($claims['email']) || ! is_string($claims['email']) || trim($claims['email']) === '')) {
+            throw new InvalidTicketException;
+        }
+
+        if (($claims['v'] ?? null) === 1 && $claims['sub'] !== $claims['email']) {
             throw new InvalidTicketException;
         }
     }

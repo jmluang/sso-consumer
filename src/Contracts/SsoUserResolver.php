@@ -18,11 +18,12 @@ interface SsoUserResolver
      * Implementation responsibilities:
      *   1. For v2 tickets, look up the local admin user by $claims['phone'].
      *   2. Fall back to $claims['email'] only for legacy records or v1 tickets.
-     *   3. Return null if not found (package will emit `user_not_found`).
-     *   4. Update SSO-related fields (last_login_at, etc.).
-     *   5. Call Auth::guard(...)->login($user).
-     *   6. Call $request->session()->regenerate() to prevent fixation.
-     *   7. Invoke any business-specific side effects (recordLogin, etc.).
+     *   3. Return null if phone and email resolve to different local users.
+     *   4. Return null if not found (package will emit `user_not_found`).
+     *   5. Update SSO-related fields (last_login_at, etc.).
+     *   6. Call Auth::guard(...)->login($user).
+     *   7. Call $request->session()->regenerate() to prevent fixation.
+     *   8. Invoke any business-specific side effects (recordLogin, etc.).
      *
      * Implementation MUST NOT:
      *   - Re-verify JWT signature / claims.

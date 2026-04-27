@@ -101,24 +101,34 @@ namespace App\Sso;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Jmluang\SsoConsumer\Contracts\SsoUserResolver;
+use RuntimeException;
 
 class AppSsoUserResolver implements SsoUserResolver
 {
     public function resolve(array $claims, Request $request): ?Authenticatable
     {
-        $user = null;
+        $phoneUser = null;
+        $emailUser = null;
 
-        if (($claims['v'] ?? null) === 2 && isset($claims['phone'])) {
-            $user = AdminUser::query()
+        if (isset($claims['phone'])) {
+            $phoneUser = AdminUser::query()
                 ->where('phone', $claims['phone'])
                 ->first();
         }
 
-        if (! $user && isset($claims['email'])) {
-            $user = AdminUser::query()
+        if (isset($claims['email'])) {
+            $emailUser = AdminUser::query()
                 ->where('email', $claims['email'])
                 ->first();
         }
+
+        if ($phoneUser && $emailUser && ! $phoneUser->is($emailUser)) {
+            report(new RuntimeException('SSO identity claim conflict.'));
+
+            return null;
+        }
+
+        $user = $phoneUser ?? $emailUser;
 
         if (! $user) {
             return null;
@@ -138,9 +148,10 @@ Before enabling portal-issued v2 tickets:
 
 1. Add a normalized phone column to the consuming app's admin user table.
 2. Backfill existing admin users from the trusted upstream SSO phone value.
-3. Update your `SsoUserResolver` to look up by phone first, then email for legacy rows.
+3. Update your `SsoUserResolver` to look up by normalized phone first, then email for legacy rows.
 4. Deploy the resolver before switching the portal kill-switch from v1 to v2.
-5. Monitor `user_not_found` and resolver failures during the rollout window.
+5. Treat phone/email matches that point at different local users as a claim conflict and refuse login.
+6. Monitor `user_not_found` and resolver failures during the rollout window.
 
 ## Events
 

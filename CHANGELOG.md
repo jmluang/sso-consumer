@@ -18,3 +18,4 @@ All notable changes to `jmluang/sso-consumer` will be documented in this file.
 - PHPUnit fixtures and tests, including RSA keys that are strictly for tests and must never be used in production ticket signing.
 - PHPStan level 5 clean (LoginButton view-string fix + baseline for package-config env() false positive).
 - v2 phone-primary ticket claim validation while keeping v1 email-only tickets as a legacy fallback.
+- Strict required-claim and invariant checks for `sub`, `phone`, `tenant_system`, `aud`, `jti`, and timestamps.

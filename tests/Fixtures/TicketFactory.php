@@ -67,7 +67,7 @@ class TicketFactory
 
     public static function wrongAudience(string $aud): string
     {
-        return self::valid(['aud' => $aud])[0];
+        return self::valid(['aud' => $aud, 'tenant_system' => $aud])[0];
     }
 
     public static function wrongTenantDomain(string $domain): string
