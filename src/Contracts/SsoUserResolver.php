@@ -16,12 +16,13 @@ interface SsoUserResolver
      * (signature, version, expiry, audience, tenant_domain, jti replay).
      *
      * Implementation responsibilities:
-     *   1. Look up the local admin user by $claims['email'].
-     *   2. Return null if not found (package will emit `user_not_found`).
-     *   3. Update SSO-related fields (last_login_at, etc.).
-     *   4. Call Auth::guard(...)->login($user).
-     *   5. Call $request->session()->regenerate() to prevent fixation.
-     *   6. Invoke any business-specific side effects (recordLogin, etc.).
+     *   1. For v2 tickets, look up the local admin user by $claims['phone'].
+     *   2. Fall back to $claims['email'] only for legacy records or v1 tickets.
+     *   3. Return null if not found (package will emit `user_not_found`).
+     *   4. Update SSO-related fields (last_login_at, etc.).
+     *   5. Call Auth::guard(...)->login($user).
+     *   6. Call $request->session()->regenerate() to prevent fixation.
+     *   7. Invoke any business-specific side effects (recordLogin, etc.).
      *
      * Implementation MUST NOT:
      *   - Re-verify JWT signature / claims.
@@ -32,7 +33,9 @@ interface SsoUserResolver
      *     iss: string,
      *     aud: string,
      *     sub: string,
-     *     email: string,
+     *     phone?: string,
+     *     email?: string,
+     *     name?: string,
      *     tenant_domain: string,
      *     tenant_id: int,
      *     tenant_system: string,

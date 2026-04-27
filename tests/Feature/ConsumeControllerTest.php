@@ -37,7 +37,11 @@ class ConsumeControllerTest extends TestCase
     {
         Event::fake();
         [$ticket, $claims] = TicketFactory::valid();
-        $this->bindResolverReturning(new GenericUser(['id' => 123, 'email' => $claims['email']]));
+        $this->bindResolverReturning(new GenericUser([
+            'id' => 123,
+            'phone' => $claims['phone'],
+            'email' => $claims['email'],
+        ]));
 
         $response = $this
             ->get('http://shanghai.florentiavillage.com/admin-app/sso/consume?ticket='.$ticket);

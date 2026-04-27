@@ -72,6 +72,8 @@ class TicketVerifier
             throw new UnsupportedVersionException;
         }
 
+        $this->validateClaimShape($claims);
+
         if (($claims['iss'] ?? null) !== config('sso-consumer.issuer')) {
             throw new InvalidTicketException;
         }
@@ -85,6 +87,33 @@ class TicketVerifier
         }
 
         return $claims;
+    }
+
+    /**
+     * @param  array<string, mixed>  $claims
+     */
+    private function validateClaimShape(array $claims): void
+    {
+        if (($claims['v'] ?? null) === 2) {
+            if (! isset($claims['phone']) || ! is_string($claims['phone']) || trim($claims['phone']) === '') {
+                throw new InvalidTicketException;
+            }
+
+            if (isset($claims['email']) && ! is_string($claims['email'])) {
+                throw new InvalidTicketException;
+            }
+
+            if (isset($claims['name']) && ! is_string($claims['name'])) {
+                throw new InvalidTicketException;
+            }
+
+            return;
+        }
+
+        if (($claims['v'] ?? null) === 1
+            && (! isset($claims['email']) || ! is_string($claims['email']) || trim($claims['email']) === '')) {
+            throw new InvalidTicketException;
+        }
     }
 
     /**

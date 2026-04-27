@@ -50,6 +50,16 @@ class TicketFactory
         return self::valid(['v' => $v])[0];
     }
 
+    public static function v1EmailOnly(): string
+    {
+        return self::valid([
+            'v' => 1,
+            'sub' => 'alice@florentiavillage.com',
+            'email' => 'alice@florentiavillage.com',
+            'phone' => null,
+        ])[0];
+    }
+
     public static function wrongIssuer(): string
     {
         return self::valid(['iss' => 'wrong-issuer'])[0];
@@ -80,13 +90,15 @@ class TicketFactory
         return [
             'iss' => 'sso-portal',
             'aud' => 'xiaohongshu',
-            'sub' => 'alice@florentiavillage.com',
+            'sub' => '15910000023',
+            'phone' => '15910000023',
             'email' => 'alice@florentiavillage.com',
+            'name' => 'Alice',
             'tenant_domain' => 'shanghai.florentiavillage.com',
             'tenant_id' => 17,
             'tenant_system' => 'xiaohongshu',
             'jti' => bin2hex(random_bytes(16)),
-            'v' => 1,
+            'v' => 2,
             'iat' => $now,
             'exp' => $now + 120,
         ];
@@ -97,6 +109,8 @@ class TicketFactory
      */
     private static function encode(array $claims): string
     {
+        $claims = array_filter($claims, fn (mixed $value): bool => $value !== null);
+
         return JWT::encode($claims, self::privateKey(), 'RS256', 'portal-2026-04');
     }
 

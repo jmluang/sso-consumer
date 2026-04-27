@@ -38,7 +38,7 @@ return [
     */
     'algorithm' => 'RS256',
     'issuer' => 'sso-portal',
-    'supported_versions' => [1],
+    'supported_versions' => [1, 2],
     'leeway_seconds' => 5,
 
     /*
@@ -55,9 +55,10 @@ return [
     |--------------------------------------------------------------------------
     | Resolver
     |--------------------------------------------------------------------------
-    | Class implementing \Jmluang\SsoConsumer\Contracts\SsoUserResolver. This
-    | class is responsible for finding the local admin user by email and
-    | calling Auth::guard(...)->login($user).
+    | Class implementing \Jmluang\SsoConsumer\Contracts\SsoUserResolver. For
+    | v2 tickets this class should find the local admin user by phone first,
+    | then fall back to email only for legacy records or v1 tickets, and call
+    | Auth::guard(...)->login($user).
     */
     'resolver' => null,
 

@@ -31,10 +31,34 @@ class TicketVerifierTest extends TestCase
 
         $this->assertSame($claims['iss'], $verified['iss']);
         $this->assertSame($claims['aud'], $verified['aud']);
+        $this->assertSame($claims['phone'], $verified['phone']);
         $this->assertSame($claims['email'], $verified['email']);
+        $this->assertSame($claims['name'], $verified['name']);
         $this->assertSame($claims['tenant_domain'], $verified['tenant_domain']);
         $this->assertSame($claims['jti'], $verified['jti']);
         $this->assertSame($claims['v'], $verified['v']);
+    }
+
+    public function test_v2_ticket_missing_phone_throws_invalid_ticket_exception(): void
+    {
+        [$ticket] = TicketFactory::valid(['phone' => null]);
+
+        $this->expectException(InvalidTicketException::class);
+
+        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+    }
+
+    public function test_v1_email_only_ticket_is_still_accepted_when_supported(): void
+    {
+        $verified = app(TicketVerifier::class)->verify(
+            TicketFactory::v1EmailOnly(),
+            'shanghai.florentiavillage.com',
+        );
+
+        $this->assertSame(1, $verified['v']);
+        $this->assertSame('alice@florentiavillage.com', $verified['sub']);
+        $this->assertSame('alice@florentiavillage.com', $verified['email']);
+        $this->assertArrayNotHasKey('phone', $verified);
     }
 
     public function test_malformed_ticket_throws_invalid_ticket_exception(): void
