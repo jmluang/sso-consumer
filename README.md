@@ -6,7 +6,7 @@
 
 A Laravel consumer package for the **fv-portal** SSO system. Verifies portal-signed JWT tickets and bridges upstream identity to the consuming app's local admin auth.
 
-Paired with the private [`jmluang/fv-portal`](https://github.com/jmluang/fv-portal) application, which signs the tickets. Architecture and contract specs live in the portal repo under `docs/sso/`; the key pieces (JWT claims v1, error codes) are mirrored below for consumers.
+Paired with the private [`jmluang/fv-portal`](https://github.com/jmluang/fv-portal) application, which signs the tickets. Architecture and contract specs live in the portal repo under `docs/sso/`; the key pieces (JWT claims v1/v2, error codes) are mirrored below for consumers.
 
 ## Requirements
 
@@ -65,7 +65,7 @@ This package's ConsumeController:
                     "Return to portal" action.
 ```
 
-## JWT Claims (v1)
+## JWT Claims
 
 Ticket is RS256-signed by the portal; consumer must verify using the portal's public key.
 
@@ -73,13 +73,15 @@ Ticket is RS256-signed by the portal; consumer must verify using the portal's pu
 |---|---|---|---|
 | `iss` | string | ✓ | Must be `sso-portal` |
 | `aud` | string | ✓ | Must equal `config('sso-consumer.system_code')` |
-| `sub` | string | ✓ | User email (same as `email`) |
-| `email` | string | ✓ | |
+| `sub` | string | ✓ | v2: phone. v1 legacy: email |
+| `phone` | string | v2 only | Primary lookup key for v2 tickets |
+| `email` | string | v1 required, v2 optional | Secondary legacy lookup key |
+| `name` | string | optional | Display name from portal/upstream identity |
 | `tenant_domain` | string | ✓ | Must equal `$request->getHost()` |
 | `tenant_id` | int | ✓ | |
 | `tenant_system` | string | ✓ | Same as `aud` |
 | `jti` | string | ✓ | 32 hex chars, one-time-use |
-| `v` | int | ✓ | Currently `1` |
+| `v` | int | ✓ | `2` for phone-primary tickets, `1` for legacy email tickets |
 | `iat` / `exp` | int | ✓ | 120s TTL recommended |
 | `nbf` | int | optional | |
 
@@ -104,11 +106,41 @@ class AppSsoUserResolver implements SsoUserResolver
 {
     public function resolve(array $claims, Request $request): ?Authenticatable
     {
-        // Find by $claims['email']; login on the appropriate guard;
-        // call session()->regenerate(); return the user or null.
+        $user = null;
+
+        if (($claims['v'] ?? null) === 2 && isset($claims['phone'])) {
+            $user = AdminUser::query()
+                ->where('phone', $claims['phone'])
+                ->first();
+        }
+
+        if (! $user && isset($claims['email'])) {
+            $user = AdminUser::query()
+                ->where('email', $claims['email'])
+                ->first();
+        }
+
+        if (! $user) {
+            return null;
+        }
+
+        Auth::guard('admin')->login($user);
+        $request->session()->regenerate();
+
+        return $user;
     }
 }
 ```
+
+## Upgrading To Phone-Primary Tickets
+
+Before enabling portal-issued v2 tickets:
+
+1. Add a normalized phone column to the consuming app's admin user table.
+2. Backfill existing admin users from the trusted upstream SSO phone value.
+3. Update your `SsoUserResolver` to look up by phone first, then email for legacy rows.
+4. Deploy the resolver before switching the portal kill-switch from v1 to v2.
+5. Monitor `user_not_found` and resolver failures during the rollout window.
 
 ## Events
 
