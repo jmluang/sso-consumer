@@ -31,8 +31,8 @@ abstract class TestCase extends Orchestra
         $app['config']->set('app.key', 'base64:'.base64_encode(str_repeat('a', 32)));
 
         // Sensible defaults for tests; individual tests can override.
-        $app['config']->set('sso-consumer.system_code', 'xiaohongshu');
-        $app['config']->set('sso-consumer.portal_url', 'https://protal.florentiavillage.com');
+        $app['config']->set('sso-consumer.system_code', 'test-system');
+        $app['config']->set('sso-consumer.portal_url', 'https://sso.test');
         $app['config']->set('sso-consumer.public_key', (string) file_get_contents(__DIR__.'/Fixtures/keys/test-public.pem'));
         $app['config']->set('sso-consumer.consume_path', '/admin-app/sso/consume');
         $app['config']->set('sso-consumer.consume_middleware', ['web']);

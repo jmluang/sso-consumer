@@ -13,7 +13,8 @@ class SsoLoginFailed
 
     /**
      * @param  array<string, mixed>|null  $claims  Partially parsed claims, if available.
-     * @param  string|null  $rawTicketHead  First 8 chars of the ticket + "..." (for log correlation).
+     * @param  string|null  $rawTicketHead  12-char SHA-256 fingerprint of the raw ticket
+     *                                      (for log correlation; same ticket → same id, no PII leak).
      */
     public function __construct(
         public readonly string $errorCode,

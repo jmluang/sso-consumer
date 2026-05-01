@@ -46,10 +46,14 @@ return [
     | Route
     |--------------------------------------------------------------------------
     | Consume endpoint path and middleware. Must be under a middleware group
-    | that resolves the current tenant (e.g. Spatie Multitenancy).
+    | that resolves the current tenant (e.g. Spatie Multitenancy). The default
+    | includes `throttle:sso-consume` because each request triggers an RSA
+    | signature verification (CPU-expensive) — without throttling the endpoint
+    | is a DoS amplifier. The package registers a default named limiter; your
+    | app can override it in AppServiceProvider if it needs tenant-aware limits.
     */
     'consume_path' => '/admin-app/sso/consume',
-    'consume_middleware' => ['web', 'tenant'],
+    'consume_middleware' => ['web', 'tenant', 'throttle:sso-consume'],
 
     /*
     |--------------------------------------------------------------------------

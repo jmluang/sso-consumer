@@ -4,9 +4,9 @@
 [![Tests](https://img.shields.io/github/actions/workflow/status/jmluang/sso-consumer/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/jmluang/sso-consumer/actions?query=workflow%3Arun-tests+branch%3Amain)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE.md)
 
-A Laravel consumer package for the **fv-portal** SSO system. Verifies portal-signed JWT tickets and bridges upstream identity to the consuming app's local admin auth.
+A Laravel consumer package for an upstream SSO portal. Verifies portal-signed JWT tickets and bridges upstream identity to the consuming app's local admin auth.
 
-Paired with the private [`jmluang/fv-portal`](https://github.com/jmluang/fv-portal) application, which signs the tickets. Architecture and contract specs live in the portal repo under `docs/sso/`; the key pieces (JWT claims v1/v2, error codes) are mirrored below for consumers.
+The companion portal application signs the tickets; integrators receive the architecture and contract specs separately. The key pieces (JWT claims v1/v2, error codes) are mirrored below for consumers.
 
 ## Requirements
 
@@ -37,10 +37,13 @@ php artisan vendor:publish --tag=sso-consumer-lang
 Fill in `.env`:
 
 ```
-SSO_PORTAL_URL=https://protal.florentiavillage.com
-SSO_SYSTEM_CODE=xiaohongshu          # or `gd`, matching tenant_registry.system_code on portal
+SSO_PORTAL_URL=https://sso.example.com
+SSO_SYSTEM_CODE=your-system-code     # must match tenant_registry.system_code on the portal
+SSO_EXPECTED_HOST=admin.example.com  # required in production — see "Production Hardening" below
 SSO_PORTAL_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
 ```
+
+> The `SSO_PORTAL_PUBLIC_KEY` value **must be wrapped in double quotes** so phpdotenv interprets the `\n` escapes as real newlines. Single-quoted or unquoted values will be passed to OpenSSL with literal `\n`, and signature verification will silently fail.
 
 Then point the resolver to your implementation in `config/sso-consumer.php`:
 
@@ -48,7 +51,7 @@ Then point the resolver to your implementation in `config/sso-consumer.php`:
 'resolver' => \App\Sso\AppSsoUserResolver::class,
 ```
 
-See [docs/sso/consumer/integration-guide.md](../fv-portal/docs/sso/consumer/integration-guide.md) (if docs live in the portal repo) for the full 10-step setup.
+A full integration guide is distributed with the portal application; ask your portal admin for it if you need the end-to-end setup.
 
 ## How it works
 
@@ -78,7 +81,7 @@ Ticket is RS256-signed by the portal; consumer must verify using the portal's pu
 | `phone` | string | v2 only | Primary lookup key for v2 tickets |
 | `email` | string | v1 required, v2 optional | Secondary legacy lookup key |
 | `name` | string | optional | Display name from portal/upstream identity |
-| `tenant_domain` | string | ✓ | Must equal `$request->getHost()` |
+| `tenant_domain` | string | ✓ | Must equal `SSO_EXPECTED_HOST` when configured; outside production, falls back to the request host with port |
 | `tenant_id` | int | ✓ | |
 | `tenant_system` | string | ✓ | Same as `aud` |
 | `jti` | string | ✓ | 32 hex chars, one-time-use |
@@ -147,6 +150,22 @@ Before enabling portal-issued v2 tickets:
 3. Implement `findByPhone()` using the normalized column, and `findByEmail()` for legacy rows.
 4. Deploy the resolver before switching the portal kill-switch from v1 to v2.
 5. Monitor `user_not_found`, `identity_conflict`, and resolver failures during the rollout window.
+
+## Production Hardening
+
+The defaults are safe to use in development, but a production deployment **must** review the following:
+
+1. **`SSO_EXPECTED_HOST` is required.** In production, consume requests fail if this value is missing; `php artisan sso:check` also reports the misconfiguration. Outside production, the consumer can fall back to the request host with port for local testing.
+2. **`replay_cache_store` must be a shared, atomic cache** (Redis, Memcached, or Database). The `array` driver gives each PHP worker its own memory, which silently disables replay protection. The `file` driver is not atomic. `php artisan sso:check` enforces this in production.
+3. **The consume route is rate-limited by default** (`throttle:sso-consume`). Each request triggers an RSA signature verification, which is CPU-expensive — without throttling the endpoint is a DoS amplifier. The package registers a default `sso-consume` limiter at 60 requests/minute per IP; override it in `App\Providers\AppServiceProvider::boot()` when your app needs tenant-aware or user-aware limits:
+   ```php
+   RateLimiter::for('sso-consume', fn (Request $request) =>
+       Limit::perMinute(60)->by($request->ip()));
+   ```
+   Override `consume_middleware` if your app already has a tenant-aware throttle.
+4. **HTTPS enforcement depends on trusted proxy configuration.** Production consume requests must be HTTPS. If TLS terminates at a load balancer or reverse proxy, configure Laravel trusted proxies so `$request->isSecure()` honors `X-Forwarded-Proto: https`; otherwise the package will correctly reject the internal plaintext hop as `ticket_invalid`.
+5. **`SsoLoginFailed` events carry the full claim array**, including `phone`, `email`, and `name`. Listeners that ship to log aggregators or alerting systems should redact or hash PII before forwarding.
+6. **Octane / Swoole / RoadRunner caveat.** The verifier mutates the static `Firebase\JWT\JWT::$leeway` while decoding. Concurrent requests sharing a worker process can race on this state. Pin a single value via config and avoid hot-reloading it, or run under traditional php-fpm if this is a concern.
 
 ## Events
 

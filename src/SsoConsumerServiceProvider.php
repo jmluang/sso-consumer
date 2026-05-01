@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Jmluang\SsoConsumer;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class SsoConsumerServiceProvider extends ServiceProvider
@@ -25,6 +28,7 @@ class SsoConsumerServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../routes/sso.php');
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'sso-consumer');
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'sso-consumer');
+        $this->registerDefaultRateLimiter();
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
@@ -43,5 +47,19 @@ class SsoConsumerServiceProvider extends ServiceProvider
                 Console\CheckConfigCommand::class,
             ]);
         }
+    }
+
+    /**
+     * Register a default `sso-consume` named rate limiter referenced by the
+     * package's `consume_middleware`. Skipped if the host application has
+     * already defined one — the host's definition wins.
+     */
+    private function registerDefaultRateLimiter(): void
+    {
+        if (RateLimiter::limiter('sso-consume') !== null) {
+            return;
+        }
+
+        RateLimiter::for('sso-consume', fn (Request $request) => Limit::perMinute(60)->by($request->ip() ?? 'unknown'));
     }
 }

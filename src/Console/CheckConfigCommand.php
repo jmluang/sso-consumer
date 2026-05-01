@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Jmluang\SsoConsumer\Console;
 
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\FileStore;
+use Illuminate\Cache\NullStore;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -166,12 +169,36 @@ class CheckConfigCommand extends Command
     private function checkCacheStore(): array
     {
         try {
-            Cache::store(config('sso-consumer.replay_cache_store'))->put('sso_check', 1, 5);
+            $store = Cache::store(config('sso-consumer.replay_cache_store'));
+            $store->put('sso_check', 1, 5);
         } catch (Throwable $e) {
             return [false, 'cache store', 'write failed: '.$e->getMessage()];
         }
 
-        return [true, 'cache store', 'writable'];
+        $driver = $store->getStore();
+        $driverClass = get_class($driver);
+
+        // Blocklist the drivers we know cannot guarantee atomic add() across
+        // workers. Anything else (redis, memcached, database, dynamodb,
+        // custom redis-backed stores, etc.) passes — false negatives here
+        // are safer than false positives that lock out legitimate setups.
+        $nonAtomicDrivers = [
+            ArrayStore::class,
+            FileStore::class,
+            NullStore::class,
+        ];
+
+        foreach ($nonAtomicDrivers as $nonAtomic) {
+            if ($driver instanceof $nonAtomic) {
+                if (app()->isProduction()) {
+                    return [false, 'cache store', "{$driverClass} is not safe for replay protection in production (use redis/memcached/database/dynamodb)"];
+                }
+
+                return [true, 'cache store', "writable ({$driverClass}, non-atomic — OK for dev only)"];
+            }
+        }
+
+        return [true, 'cache store', "writable ({$driverClass})"];
     }
 
     /**
@@ -197,7 +224,12 @@ class CheckConfigCommand extends Command
                 continue;
             }
 
-            if (isset($aliases[$entry]) || isset($groups[$entry]) || class_exists($entry)) {
+            // Strip parameters (e.g. `throttle:sso-consume` → `throttle`) so
+            // we resolve the registered alias rather than the parameterized
+            // entry string, which is never registered as a key.
+            $alias = explode(':', $entry, 2)[0];
+
+            if (isset($aliases[$alias]) || isset($groups[$alias]) || class_exists($alias)) {
                 continue;
             }
 

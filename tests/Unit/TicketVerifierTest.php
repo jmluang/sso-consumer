@@ -28,7 +28,7 @@ class TicketVerifierTest extends TestCase
     {
         [$ticket, $claims] = TicketFactory::valid();
 
-        $verified = app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+        $verified = app(TicketVerifier::class)->verify($ticket, 'tenant-a.test');
 
         $this->assertSame($claims['iss'], $verified['iss']);
         $this->assertSame($claims['aud'], $verified['aud']);
@@ -46,7 +46,7 @@ class TicketVerifierTest extends TestCase
 
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify($ticket, 'tenant-a.test');
     }
 
     #[DataProvider('requiredClaimProvider')]
@@ -56,7 +56,7 @@ class TicketVerifierTest extends TestCase
 
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify($ticket, 'tenant-a.test');
     }
 
     public function test_v2_ticket_with_sub_different_from_phone_throws_invalid_ticket_exception(): void
@@ -65,7 +65,7 @@ class TicketVerifierTest extends TestCase
 
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify($ticket, 'tenant-a.test');
     }
 
     public function test_ticket_with_invalid_jti_shape_throws_invalid_ticket_exception(): void
@@ -74,28 +74,28 @@ class TicketVerifierTest extends TestCase
 
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify($ticket, 'tenant-a.test');
     }
 
     public function test_ticket_with_tenant_system_different_from_audience_throws_invalid_ticket_exception(): void
     {
-        [$ticket] = TicketFactory::valid(['tenant_system' => 'gd']);
+        [$ticket] = TicketFactory::valid(['tenant_system' => 'other-system']);
 
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify($ticket, 'tenant-a.test');
     }
 
     public function test_v1_email_only_ticket_is_still_accepted_when_supported(): void
     {
         $verified = app(TicketVerifier::class)->verify(
             TicketFactory::v1EmailOnly(),
-            'shanghai.florentiavillage.com',
+            'tenant-a.test',
         );
 
         $this->assertSame(1, $verified['v']);
-        $this->assertSame('alice@florentiavillage.com', $verified['sub']);
-        $this->assertSame('alice@florentiavillage.com', $verified['email']);
+        $this->assertSame('alice@example.test', $verified['sub']);
+        $this->assertSame('alice@example.test', $verified['email']);
         $this->assertArrayNotHasKey('phone', $verified);
     }
 
@@ -103,42 +103,42 @@ class TicketVerifierTest extends TestCase
     {
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify(TicketFactory::unsignedMalformed(), 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify(TicketFactory::unsignedMalformed(), 'tenant-a.test');
     }
 
     public function test_wrong_algorithm_throws_invalid_ticket_exception(): void
     {
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify(TicketFactory::wrongAlg(), 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify(TicketFactory::wrongAlg(), 'tenant-a.test');
     }
 
     public function test_bad_signature_throws_invalid_ticket_exception(): void
     {
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify(TicketFactory::badSignature(), 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify(TicketFactory::badSignature(), 'tenant-a.test');
     }
 
     public function test_wrong_version_throws_unsupported_version_exception(): void
     {
         $this->expectException(UnsupportedVersionException::class);
 
-        app(TicketVerifier::class)->verify(TicketFactory::wrongVersion(99), 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify(TicketFactory::wrongVersion(99), 'tenant-a.test');
     }
 
     public function test_wrong_issuer_throws_invalid_ticket_exception(): void
     {
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify(TicketFactory::wrongIssuer(), 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify(TicketFactory::wrongIssuer(), 'tenant-a.test');
     }
 
     public function test_expired_ticket_throws_expired_ticket_exception(): void
     {
         $this->expectException(ExpiredTicketException::class);
 
-        app(TicketVerifier::class)->verify(TicketFactory::expired(), 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify(TicketFactory::expired(), 'tenant-a.test');
     }
 
     public function test_future_iat_beyond_leeway_throws_invalid_ticket_exception(): void
@@ -150,7 +150,7 @@ class TicketVerifierTest extends TestCase
 
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify($ticket, 'tenant-a.test');
     }
 
     public function test_future_nbf_beyond_leeway_throws_invalid_ticket_exception(): void
@@ -162,14 +162,14 @@ class TicketVerifierTest extends TestCase
 
         $this->expectException(InvalidTicketException::class);
 
-        app(TicketVerifier::class)->verify($ticket, 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify($ticket, 'tenant-a.test');
     }
 
     public function test_wrong_audience_throws_audience_mismatch_exception(): void
     {
         $this->expectException(AudienceMismatchException::class);
 
-        app(TicketVerifier::class)->verify(TicketFactory::wrongAudience('gd'), 'shanghai.florentiavillage.com');
+        app(TicketVerifier::class)->verify(TicketFactory::wrongAudience('other-system'), 'tenant-a.test');
     }
 
     public function test_wrong_tenant_domain_throws_tenant_mismatch_exception(): void
@@ -177,8 +177,8 @@ class TicketVerifierTest extends TestCase
         $this->expectException(TenantMismatchException::class);
 
         app(TicketVerifier::class)->verify(
-            TicketFactory::wrongTenantDomain('beijing.florentiavillage.com'),
-            'shanghai.florentiavillage.com'
+            TicketFactory::wrongTenantDomain('tenant-b.test'),
+            'tenant-a.test'
         );
     }
 

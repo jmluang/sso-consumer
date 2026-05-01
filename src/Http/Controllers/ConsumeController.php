@@ -48,6 +48,15 @@ class ConsumeController extends Controller
     public function __invoke(Request $request): Response
     {
         $requestId = $request->header('X-Request-Id') ?: (string) Str::uuid();
+
+        // Reject plaintext consumes in production: a ticket on the wire over
+        // HTTP would leak through proxies, browser history and Referer headers.
+        if (app()->isProduction() && ! $request->isSecure()) {
+            SsoLoginFailed::dispatch('ticket_invalid', null, null, $requestId);
+
+            return $this->errorResponse('ticket_invalid', $requestId);
+        }
+
         $ticket = $request->query('ticket');
 
         if (! is_string($ticket) || $ticket === '') {
@@ -118,7 +127,10 @@ class ConsumeController extends Controller
         if ($byPhone !== null
             && $byEmail !== null
             && $byPhone->getAuthIdentifier() !== $byEmail->getAuthIdentifier()) {
-            throw new IdentityConflictException;
+            throw new IdentityConflictException(
+                phoneIdentifier: $byPhone->getAuthIdentifier(),
+                emailIdentifier: $byEmail->getAuthIdentifier(),
+            );
         }
 
         return $byPhone ?? $byEmail;
@@ -153,6 +165,18 @@ class ConsumeController extends Controller
             return trim($configuredHost);
         }
 
+        // In production we refuse to fall back to the request `Host` header:
+        // a stolen ticket from a sibling tenant could otherwise pass the
+        // `tenant_domain` check via a forged `Host:`. Failing here (rather
+        // than at boot) keeps `sso:check` and other artisan commands usable
+        // for diagnosing exactly this misconfiguration.
+        if (app()->isProduction()) {
+            throw new \RuntimeException(
+                'sso-consumer: SSO_EXPECTED_HOST must be set in production. '
+                .'Run `php artisan sso:check` and see README "Production Hardening".'
+            );
+        }
+
         return $request->getHttpHost();
     }
 
@@ -165,17 +189,33 @@ class ConsumeController extends Controller
 
     private function errorResponse(string $errorCode, string $requestId): Response
     {
+        // PortalUrlBuilder::portalUrl() throws when portal_url is not set.
+        // We're already in an error path — degrade the link instead of
+        // letting the error page itself blow up to a 500.
+        try {
+            $portalUrl = app(PortalUrlBuilder::class)->portalUrl();
+        } catch (Throwable) {
+            $portalUrl = (string) config('sso-consumer.failure_redirect', '#');
+        }
+
         return response()->view((string) config('sso-consumer.error_view', 'sso-consumer::error'), [
             'errorCode' => $errorCode,
             'errorMessage' => trans("sso-consumer::sso.{$errorCode}"),
-            'portalUrl' => app(PortalUrlBuilder::class)->portalUrl(),
+            'portalUrl' => $portalUrl,
             'loginUrl' => config('sso-consumer.failure_redirect'),
             'requestId' => $requestId,
         ], 400);
     }
 
+    /**
+     * Stable, low-cardinality fingerprint for log correlation.
+     *
+     * The first chars of a JWT are always the base64-encoded header
+     * (`eyJhbGci...`), so prefix slicing carries zero entropy. Hash the full
+     * ticket so two failed attempts on the same ticket share an id.
+     */
     private function ticketHead(string $ticket): string
     {
-        return substr($ticket, 0, 8).'...';
+        return substr(hash('sha256', $ticket), 0, 12);
     }
 }

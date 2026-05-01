@@ -7,6 +7,7 @@ namespace Jmluang\SsoConsumer\Tests\Feature;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -45,7 +46,7 @@ class ConsumeControllerTest extends TestCase
         ]));
 
         $response = $this
-            ->get('http://shanghai.florentiavillage.com/admin-app/sso/consume?ticket='.$ticket);
+            ->get('http://tenant-a.test/admin-app/sso/consume?ticket='.$ticket);
 
         $response->assertRedirect('/admin-app/dashboard');
         $this->assertTrue(Cache::has('sso_consumer:jti:'.$claims['jti']));
@@ -73,11 +74,11 @@ class ConsumeControllerTest extends TestCase
     public function test_configured_expected_host_is_used_instead_of_request_host(): void
     {
         Event::fake();
-        config()->set('sso-consumer.expected_host', 'shanghai.florentiavillage.com');
+        config()->set('sso-consumer.expected_host', 'tenant-a.test');
         $claims = TicketFactory::valid([
-            'tenant_domain' => 'shanghai.florentiavillage.com',
+            'tenant_domain' => 'tenant-a.test',
         ])[1];
-        $this->bindVerifierExpectingHost('shanghai.florentiavillage.com', $claims);
+        $this->bindVerifierExpectingHost('tenant-a.test', $claims);
         $this->bindResolverReturning(new GenericUser(['id' => 123, 'email' => $claims['email']]));
 
         $response = $this->get('http://spoofed.example.test/admin-app/sso/consume?ticket=header.payload.signature');
@@ -106,7 +107,7 @@ class ConsumeControllerTest extends TestCase
         $this->bindResolverReturning(new GenericUser(['id' => 123, 'email' => $claims['email']]));
 
         $response = $this
-            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->withServerVariables(['HTTP_HOST' => 'tenant-a.test'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
         $response->assertRedirect('/admin-app/dashboard');
@@ -143,7 +144,7 @@ class ConsumeControllerTest extends TestCase
         $this->bindResolverReturning(new GenericUser(['id' => 123]));
 
         $response = $this
-            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->withServerVariables(['HTTP_HOST' => 'tenant-a.test'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
         $response->assertStatus(400);
@@ -151,7 +152,7 @@ class ConsumeControllerTest extends TestCase
         Event::assertDispatched(
             SsoLoginFailed::class,
             fn (SsoLoginFailed $event): bool => $event->errorCode === $errorCode
-                && $event->rawTicketHead === 'header.p...'
+                && $event->rawTicketHead === substr(hash('sha256', 'header.payload.signature'), 0, 12)
                 && $event->exception instanceof $exceptionClass
         );
     }
@@ -171,7 +172,7 @@ class ConsumeControllerTest extends TestCase
         $this->bindResolverReturning(new GenericUser(['id' => 123]));
 
         $response = $this
-            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->withServerVariables(['HTTP_HOST' => 'tenant-a.test'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
         $response->assertStatus(400);
@@ -219,7 +220,7 @@ class ConsumeControllerTest extends TestCase
         $this->app->instance(SsoUserResolver::class, $resolver);
 
         $response = $this
-            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->withServerVariables(['HTTP_HOST' => 'tenant-a.test'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
         $response->assertStatus(400);
@@ -230,6 +231,8 @@ class ConsumeControllerTest extends TestCase
             fn (SsoLoginFailed $event): bool => $event->errorCode === IdentityConflictException::ERROR_CODE
                 && $event->claims === $claims
                 && $event->exception instanceof IdentityConflictException
+                && $event->exception->phoneIdentifier === 11
+                && $event->exception->emailIdentifier === 22
         );
         Event::assertNotDispatched(SsoLoginSucceeded::class);
     }
@@ -278,7 +281,7 @@ class ConsumeControllerTest extends TestCase
         $this->app->instance(SsoUserResolver::class, $resolver);
 
         $response = $this
-            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->withServerVariables(['HTTP_HOST' => 'tenant-a.test'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
         $response->assertRedirect('/admin-app/dashboard');
@@ -293,8 +296,8 @@ class ConsumeControllerTest extends TestCase
         [, $claims] = TicketFactory::valid([
             'v' => 1,
             'phone' => null,
-            'sub' => 'legacy@florentiavillage.com',
-            'email' => 'legacy@florentiavillage.com',
+            'sub' => 'legacy@example.test',
+            'email' => 'legacy@example.test',
         ]);
         unset($claims['phone']);
         $this->bindVerifierReturning($claims);
@@ -329,7 +332,7 @@ class ConsumeControllerTest extends TestCase
         $this->app->instance(SsoUserResolver::class, $resolver);
 
         $response = $this
-            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->withServerVariables(['HTTP_HOST' => 'tenant-a.test'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
         $response->assertRedirect('/admin-app/dashboard');
@@ -369,7 +372,7 @@ class ConsumeControllerTest extends TestCase
         });
 
         $response = $this
-            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->withServerVariables(['HTTP_HOST' => 'tenant-a.test'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
         $response->assertStatus(400);
@@ -387,7 +390,7 @@ class ConsumeControllerTest extends TestCase
         $this->bindResolverReturning(null);
 
         $response = $this
-            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->withServerVariables(['HTTP_HOST' => 'tenant-a.test'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
         $response->assertStatus(400);
@@ -430,7 +433,7 @@ class ConsumeControllerTest extends TestCase
         });
 
         $response = $this
-            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->withServerVariables(['HTTP_HOST' => 'tenant-a.test'])
             ->get('/admin-app/sso/consume?ticket=header.payload.signature');
 
         $response->assertStatus(400);
@@ -538,5 +541,58 @@ class ConsumeControllerTest extends TestCase
                 // no-op
             }
         });
+    }
+
+    public function test_production_rejects_plaintext_http_consume(): void
+    {
+        Event::fake();
+        $this->app['env'] = 'production';
+
+        $response = $this->get('http://tenant-a.test/admin-app/sso/consume?ticket=anything');
+
+        $response->assertStatus(400);
+        $response->assertSee('ticket_invalid');
+        Event::assertDispatched(
+            SsoLoginFailed::class,
+            fn (SsoLoginFailed $event): bool => $event->errorCode === 'ticket_invalid'
+                && $event->claims === null
+                && $event->rawTicketHead === null
+        );
+    }
+
+    public function test_production_allows_https_consume(): void
+    {
+        Event::fake();
+        $this->app['env'] = 'production';
+        config()->set('sso-consumer.expected_host', 'tenant-a.test');
+        [, $claims] = TicketFactory::valid();
+        $this->bindVerifierExpectingHost('tenant-a.test', $claims);
+        $this->bindResolverReturning(new GenericUser(['id' => 1, 'phone' => $claims['phone']]));
+
+        $response = $this->get('https://tenant-a.test/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertRedirect('/admin-app/dashboard');
+    }
+
+    public function test_production_allows_forwarded_https_from_trusted_proxy(): void
+    {
+        Event::fake();
+        $this->app['env'] = 'production';
+        TrustProxies::at('127.0.0.1');
+        TrustProxies::withHeaders(Request::HEADER_X_FORWARDED_PROTO);
+        $this->beforeApplicationDestroyed(fn () => TrustProxies::flushState());
+        config()->set('sso-consumer.expected_host', 'tenant-a.test');
+        [, $claims] = TicketFactory::valid();
+        $this->bindVerifierExpectingHost('tenant-a.test', $claims);
+        $this->bindResolverReturning(new GenericUser(['id' => 1, 'phone' => $claims['phone']]));
+
+        $response = $this
+            ->withServerVariables([
+                'REMOTE_ADDR' => '127.0.0.1',
+                'HTTP_X_FORWARDED_PROTO' => 'https',
+            ])
+            ->get('http://tenant-a.test/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertRedirect('/admin-app/dashboard');
     }
 }

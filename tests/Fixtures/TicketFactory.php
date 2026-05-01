@@ -54,8 +54,8 @@ class TicketFactory
     {
         return self::valid([
             'v' => 1,
-            'sub' => 'alice@florentiavillage.com',
-            'email' => 'alice@florentiavillage.com',
+            'sub' => 'alice@example.test',
+            'email' => 'alice@example.test',
             'phone' => null,
         ])[0];
     }
@@ -89,14 +89,14 @@ class TicketFactory
 
         return [
             'iss' => 'sso-portal',
-            'aud' => 'xiaohongshu',
+            'aud' => 'test-system',
             'sub' => '15910000023',
             'phone' => '15910000023',
-            'email' => 'alice@florentiavillage.com',
+            'email' => 'alice@example.test',
             'name' => 'Alice',
-            'tenant_domain' => 'shanghai.florentiavillage.com',
+            'tenant_domain' => 'tenant-a.test',
             'tenant_id' => 17,
-            'tenant_system' => 'xiaohongshu',
+            'tenant_system' => 'test-system',
             'jti' => bin2hex(random_bytes(16)),
             'v' => 2,
             'iat' => $now,
