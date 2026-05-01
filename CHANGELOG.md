@@ -2,9 +2,14 @@
 
 All notable changes to `jmluang/sso-consumer` will be documented in this file.
 
+## v0.0.5 - 2026-05-01
+
+phone support
+
 ## [Unreleased]
 
 ### Added
+
 - Initial package scaffold: contracts, exceptions, events, service provider.
 - Config with portal_url / system_code / public_key / resolver / replay cache settings.
 - Default error view and `<x-sso-consumer::login-button>` component.
@@ -25,6 +30,7 @@ All notable changes to `jmluang/sso-consumer` will be documented in this file.
   via a careless resolver implementation.
 
 ### Changed
+
 - **BREAKING:** `SsoUserResolver` contract split into `findByPhone()`,
   `findByEmail()`, and `login()`. The library now performs the lookup
   orchestration and the conflict check itself; consumers only contribute
