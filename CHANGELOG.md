@@ -2,6 +2,10 @@
 
 All notable changes to `jmluang/sso-consumer` will be documented in this file.
 
+## v0.0.6 - 2026-05-01
+
+Security Update
+
 ## v0.0.5 - 2026-05-01
 
 phone support
