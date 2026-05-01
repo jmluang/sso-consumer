@@ -18,5 +18,6 @@ return [
     'audience_mismatch' => '登录凭证不属于当前业务系统。',
     'tenant_mismatch' => '登录凭证与当前访问域名不匹配。',
     'user_not_found' => '本系统未录入您的账号，请联系管理员授权。',
+    'identity_conflict' => '您的手机号与邮箱在本系统对应不同的账号，请联系管理员核对。',
     'resolver_failed' => '登录处理失败，请稍后重试或联系管理员。',
 ];

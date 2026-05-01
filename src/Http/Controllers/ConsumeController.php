@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Jmluang\SsoConsumer\Http\Controllers;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
@@ -11,6 +12,7 @@ use Illuminate\Support\Str;
 use Jmluang\SsoConsumer\Contracts\SsoUserResolver;
 use Jmluang\SsoConsumer\Events\SsoLoginFailed;
 use Jmluang\SsoConsumer\Events\SsoLoginSucceeded;
+use Jmluang\SsoConsumer\Exceptions\IdentityConflictException;
 use Jmluang\SsoConsumer\Exceptions\ResolverFailedException;
 use Jmluang\SsoConsumer\Exceptions\SsoConsumerException;
 use Jmluang\SsoConsumer\Exceptions\UserNotFoundException;
@@ -34,13 +36,14 @@ class ConsumeController extends Controller
      *   2. TicketVerifier::verify($ticket, configured/request host)
      *      throws one of the SsoConsumer exceptions on any failure.
      *   3. JtiReplayGuard::claim($jti, $ttl) — throws ReplayedTicketException.
-     *   4. app(SsoUserResolver::class)->resolve($claims, $request)
-     *      - null → UserNotFoundException
-     *      - throws → ResolverFailedException (wrapped)
+     *   4. Identity orchestration via SsoUserResolver:
+     *      a. If $claims['phone'] is non-empty: findByPhone($phone, $claims, $request)
+     *      b. If $claims['email'] is non-empty: findByEmail($email, $claims, $request)
+     *      c. Both non-null and different identifiers → IdentityConflictException
+     *      d. Both null → UserNotFoundException
+     *      e. resolver->login($user, $claims, $request) — throws → ResolverFailedException
      *   5. On success: dispatch SsoLoginSucceeded, 302 success_redirect.
      *   6. On any exception: dispatch SsoLoginFailed, render error view.
-     *
-     * TODO(OpenCode): implement per spec.
      */
     public function __invoke(Request $request): Response
     {
@@ -61,14 +64,17 @@ class ConsumeController extends Controller
             $claims = $this->verifier->verify($ticket, $this->expectedHost($request));
             $this->guard->claim((string) $claims['jti'], $this->replayTtlSeconds((int) $claims['exp']));
 
-            try {
-                $user = app(SsoUserResolver::class)->resolve($claims, $request);
-            } catch (Throwable $e) {
-                throw new ResolverFailedException(previous: $e);
-            }
+            $resolver = app(SsoUserResolver::class);
+            $user = $this->resolveUser($resolver, $claims, $request);
 
             if ($user === null) {
                 throw new UserNotFoundException;
+            }
+
+            try {
+                $resolver->login($user, $claims, $request);
+            } catch (Throwable $e) {
+                throw new ResolverFailedException(previous: $e);
             }
 
             SsoLoginSucceeded::dispatch($user, $claims, $requestId);
@@ -92,6 +98,46 @@ class ConsumeController extends Controller
 
             return $this->errorResponse($wrapped->errorCode(), $requestId);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $claims
+     */
+    private function resolveUser(SsoUserResolver $resolver, array $claims, Request $request): ?Authenticatable
+    {
+        $phone = $this->stringClaim($claims, 'phone');
+        $email = $this->stringClaim($claims, 'email');
+
+        try {
+            $byPhone = $phone !== null ? $resolver->findByPhone($phone, $claims, $request) : null;
+            $byEmail = $email !== null ? $resolver->findByEmail($email, $claims, $request) : null;
+        } catch (Throwable $e) {
+            throw new ResolverFailedException(previous: $e);
+        }
+
+        if ($byPhone !== null
+            && $byEmail !== null
+            && $byPhone->getAuthIdentifier() !== $byEmail->getAuthIdentifier()) {
+            throw new IdentityConflictException;
+        }
+
+        return $byPhone ?? $byEmail;
+    }
+
+    /**
+     * @param  array<string, mixed>  $claims
+     */
+    private function stringClaim(array $claims, string $key): ?string
+    {
+        $value = $claims[$key] ?? null;
+
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? null : $trimmed;
     }
 
     private function redirectResponse(string $location): Response

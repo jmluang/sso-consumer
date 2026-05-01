@@ -15,6 +15,7 @@ use Jmluang\SsoConsumer\Events\SsoLoginFailed;
 use Jmluang\SsoConsumer\Events\SsoLoginSucceeded;
 use Jmluang\SsoConsumer\Exceptions\AudienceMismatchException;
 use Jmluang\SsoConsumer\Exceptions\ExpiredTicketException;
+use Jmluang\SsoConsumer\Exceptions\IdentityConflictException;
 use Jmluang\SsoConsumer\Exceptions\InvalidTicketException;
 use Jmluang\SsoConsumer\Exceptions\ReplayedTicketException;
 use Jmluang\SsoConsumer\Exceptions\ResolverFailedException;
@@ -182,6 +183,202 @@ class ConsumeControllerTest extends TestCase
         );
     }
 
+    public function test_conflicting_phone_and_email_lookups_are_rejected_at_library_level(): void
+    {
+        Event::fake();
+        [, $claims] = TicketFactory::valid();
+        $this->bindVerifierReturning($claims);
+
+        $userByPhone = new GenericUser(['id' => 11, 'phone' => $claims['phone']]);
+        $userByEmail = new GenericUser(['id' => 22, 'email' => $claims['email']]);
+
+        $resolver = new class($userByPhone, $userByEmail) implements SsoUserResolver
+        {
+            public bool $loginCalled = false;
+
+            public function __construct(
+                private readonly Authenticatable $userByPhone,
+                private readonly Authenticatable $userByEmail,
+            ) {}
+
+            public function findByPhone(string $phone, array $claims, Request $request): ?Authenticatable
+            {
+                return $this->userByPhone;
+            }
+
+            public function findByEmail(string $email, array $claims, Request $request): ?Authenticatable
+            {
+                return $this->userByEmail;
+            }
+
+            public function login(Authenticatable $user, array $claims, Request $request): void
+            {
+                $this->loginCalled = true;
+            }
+        };
+        $this->app->instance(SsoUserResolver::class, $resolver);
+
+        $response = $this
+            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->get('/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertStatus(400);
+        $response->assertSee('identity_conflict');
+        $this->assertFalse($resolver->loginCalled, 'login() must not be invoked when phone and email collide');
+        Event::assertDispatched(
+            SsoLoginFailed::class,
+            fn (SsoLoginFailed $event): bool => $event->errorCode === IdentityConflictException::ERROR_CODE
+                && $event->claims === $claims
+                && $event->exception instanceof IdentityConflictException
+        );
+        Event::assertNotDispatched(SsoLoginSucceeded::class);
+    }
+
+    public function test_matching_phone_and_email_lookups_log_in_once(): void
+    {
+        Event::fake();
+        [, $claims] = TicketFactory::valid();
+        $this->bindVerifierReturning($claims);
+
+        $shared = new GenericUser([
+            'id' => 77,
+            'phone' => $claims['phone'],
+            'email' => $claims['email'],
+        ]);
+
+        $resolver = new class($shared) implements SsoUserResolver
+        {
+            public int $phoneCalls = 0;
+
+            public int $emailCalls = 0;
+
+            public int $loginCalls = 0;
+
+            public function __construct(private readonly Authenticatable $user) {}
+
+            public function findByPhone(string $phone, array $claims, Request $request): ?Authenticatable
+            {
+                $this->phoneCalls++;
+
+                return $this->user;
+            }
+
+            public function findByEmail(string $email, array $claims, Request $request): ?Authenticatable
+            {
+                $this->emailCalls++;
+
+                return $this->user;
+            }
+
+            public function login(Authenticatable $user, array $claims, Request $request): void
+            {
+                $this->loginCalls++;
+            }
+        };
+        $this->app->instance(SsoUserResolver::class, $resolver);
+
+        $response = $this
+            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->get('/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertRedirect('/admin-app/dashboard');
+        $this->assertSame(1, $resolver->phoneCalls);
+        $this->assertSame(1, $resolver->emailCalls);
+        $this->assertSame(1, $resolver->loginCalls);
+    }
+
+    public function test_v1_ticket_skips_phone_lookup(): void
+    {
+        Event::fake();
+        [, $claims] = TicketFactory::valid([
+            'v' => 1,
+            'phone' => null,
+            'sub' => 'legacy@florentiavillage.com',
+            'email' => 'legacy@florentiavillage.com',
+        ]);
+        unset($claims['phone']);
+        $this->bindVerifierReturning($claims);
+
+        $resolver = new class implements SsoUserResolver
+        {
+            public int $phoneCalls = 0;
+
+            public int $emailCalls = 0;
+
+            public int $loginCalls = 0;
+
+            public function findByPhone(string $phone, array $claims, Request $request): ?Authenticatable
+            {
+                $this->phoneCalls++;
+
+                return null;
+            }
+
+            public function findByEmail(string $email, array $claims, Request $request): ?Authenticatable
+            {
+                $this->emailCalls++;
+
+                return new GenericUser(['id' => 1, 'email' => $email]);
+            }
+
+            public function login(Authenticatable $user, array $claims, Request $request): void
+            {
+                $this->loginCalls++;
+            }
+        };
+        $this->app->instance(SsoUserResolver::class, $resolver);
+
+        $response = $this
+            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->get('/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertRedirect('/admin-app/dashboard');
+        $this->assertSame(0, $resolver->phoneCalls, 'v1 tickets carry no phone claim');
+        $this->assertSame(1, $resolver->emailCalls);
+        $this->assertSame(1, $resolver->loginCalls);
+    }
+
+    public function test_login_hook_failure_wraps_into_resolver_failed(): void
+    {
+        Event::fake();
+        [, $claims] = TicketFactory::valid();
+        $this->bindVerifierReturning($claims);
+
+        $original = new RuntimeException('login exploded');
+        $handler = Mockery::spy(ExceptionHandler::class);
+        $this->app->instance(ExceptionHandler::class, $handler);
+
+        $this->app->instance(SsoUserResolver::class, new class($original) implements SsoUserResolver
+        {
+            public function __construct(private readonly RuntimeException $exception) {}
+
+            public function findByPhone(string $phone, array $claims, Request $request): ?Authenticatable
+            {
+                return new GenericUser(['id' => 1, 'phone' => $phone]);
+            }
+
+            public function findByEmail(string $email, array $claims, Request $request): ?Authenticatable
+            {
+                return null;
+            }
+
+            public function login(Authenticatable $user, array $claims, Request $request): void
+            {
+                throw $this->exception;
+            }
+        });
+
+        $response = $this
+            ->withServerVariables(['HTTP_HOST' => 'shanghai.florentiavillage.com'])
+            ->get('/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertStatus(400);
+        $response->assertSee('resolver_failed');
+        $handler->shouldHaveReceived('report')
+            ->once()
+            ->with(Mockery::on(fn ($e): bool => $e instanceof ResolverFailedException && $e->getPrevious() === $original));
+    }
+
     public function test_resolver_returning_null_renders_user_not_found(): void
     {
         Event::fake();
@@ -216,9 +413,19 @@ class ConsumeControllerTest extends TestCase
         {
             public function __construct(private readonly RuntimeException $exception) {}
 
-            public function resolve(array $claims, Request $request): ?Authenticatable
+            public function findByPhone(string $phone, array $claims, Request $request): ?Authenticatable
             {
                 throw $this->exception;
+            }
+
+            public function findByEmail(string $email, array $claims, Request $request): ?Authenticatable
+            {
+                return null;
+            }
+
+            public function login(Authenticatable $user, array $claims, Request $request): void
+            {
+                // unreachable: lookup throws first
             }
         });
 
@@ -316,9 +523,19 @@ class ConsumeControllerTest extends TestCase
         {
             public function __construct(private readonly ?Authenticatable $user) {}
 
-            public function resolve(array $claims, Request $request): ?Authenticatable
+            public function findByPhone(string $phone, array $claims, Request $request): ?Authenticatable
             {
                 return $this->user;
+            }
+
+            public function findByEmail(string $email, array $claims, Request $request): ?Authenticatable
+            {
+                return $this->user;
+            }
+
+            public function login(Authenticatable $user, array $claims, Request $request): void
+            {
+                // no-op
             }
         });
     }

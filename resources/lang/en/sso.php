@@ -17,5 +17,6 @@ return [
     'audience_mismatch' => 'This login ticket is not for the current system.',
     'tenant_mismatch' => 'This login ticket does not match the current domain.',
     'user_not_found' => 'Your account is not registered in this system. Please contact an administrator.',
+    'identity_conflict' => 'Your phone and email map to different accounts in this system. Please contact an administrator.',
     'resolver_failed' => 'Login processing failed. Please try again or contact an administrator.',
 ];

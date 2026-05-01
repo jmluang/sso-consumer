@@ -10,8 +10,18 @@ use Jmluang\SsoConsumer\Contracts\SsoUserResolver;
 
 class FakeSsoUserResolver implements SsoUserResolver
 {
-    public function resolve(array $claims, Request $request): ?Authenticatable
+    public function findByPhone(string $phone, array $claims, Request $request): ?Authenticatable
     {
         return null;
+    }
+
+    public function findByEmail(string $email, array $claims, Request $request): ?Authenticatable
+    {
+        return null;
+    }
+
+    public function login(Authenticatable $user, array $claims, Request $request): void
+    {
+        // no-op default for tests
     }
 }
