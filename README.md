@@ -111,12 +111,18 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Jmluang\SsoConsumer\Contracts\SsoUserResolver;
+use Jmluang\SsoConsumer\Support\PhoneNormalizer;
 
 class AppSsoUserResolver implements SsoUserResolver
 {
     public function findByPhone(string $phone, array $claims, Request $request): ?Authenticatable
     {
-        return AdminUser::query()->where('phone', $phone)->first();
+        // Normalize both sides so domestic ("15912340001") and international
+        // ("+852 91234567") tickets match local rows regardless of how the
+        // number was originally typed. See "Phone format" below.
+        $normalized = PhoneNormalizer::normalize($phone);
+
+        return AdminUser::query()->where('phone', $normalized)->first();
     }
 
     public function findByEmail(string $email, array $claims, Request $request): ?Authenticatable
@@ -140,6 +146,27 @@ The library will:
 3. Throw `IdentityConflictException` (error code `identity_conflict`) if both lookups succeed but return users with different identifiers — `login()` is **not** called.
 4. Throw `UserNotFoundException` if both lookups return `null`.
 5. Otherwise call `login($user, $claims, $request)` exactly once.
+
+## Phone format
+
+The portal issues `phone` claims in one of two canonical shapes:
+
+- **Domestic** — digits only, e.g. `15912340001`.
+- **International** — `+<country> <local>`, separated by a single space,
+  e.g. `+852 91234567`. The country code is 1–4 digits; the local number is
+  3–20 digits with no inner separators.
+
+Use `Jmluang\SsoConsumer\Support\PhoneNormalizer::normalize($phone)` on both
+the inbound claim and the locally stored column before comparing — operators
+typing `159-1234-0001`, `(415) 555-0123`, or `+852-9123-4567` all collapse to
+the canonical form, so lookups don't miss because of formatting drift. The
+helper returns `null` for empty input and throws `InvalidArgumentException`
+for inputs that can't be parsed (letters, too few digits, missing separator
+between country code and local number, etc.).
+
+If your local column already stores normalized values, you only need to
+normalize the inbound claim. If you're migrating an existing column, run the
+helper during the backfill described below.
 
 ## Upgrading To Phone-Primary Tickets
 
