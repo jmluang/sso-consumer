@@ -182,6 +182,20 @@ class TicketVerifierTest extends TestCase
         );
     }
 
+    public function test_tenant_domain_can_match_one_of_multiple_expected_hosts(): void
+    {
+        [$ticket, $claims] = TicketFactory::valid([
+            'tenant_domain' => 'tenant-b.test',
+        ]);
+
+        $verified = app(TicketVerifier::class)->verify($ticket, [
+            'tenant-a.test',
+            'tenant-b.test',
+        ]);
+
+        $this->assertSame($claims['tenant_domain'], $verified['tenant_domain']);
+    }
+
     /**
      * @return array<string, array{0: string}>
      */

@@ -157,12 +157,19 @@ class ConsumeController extends Controller
         return new Response('', 302, ['Location' => $location]);
     }
 
-    private function expectedHost(Request $request): string
+    /**
+     * @return string|array<int, string>
+     */
+    private function expectedHost(Request $request): string|array
     {
-        $configuredHost = config('sso-consumer.expected_host');
+        $configuredHosts = $this->configuredExpectedHosts();
 
-        if (is_string($configuredHost) && trim($configuredHost) !== '') {
-            return trim($configuredHost);
+        if (count($configuredHosts) === 1) {
+            return $configuredHosts[0];
+        }
+
+        if (count($configuredHosts) > 1) {
+            return $configuredHosts;
         }
 
         // In production we refuse to fall back to the request `Host` header:
@@ -172,12 +179,45 @@ class ConsumeController extends Controller
         // for diagnosing exactly this misconfiguration.
         if (app()->isProduction()) {
             throw new \RuntimeException(
-                'sso-consumer: SSO_EXPECTED_HOST must be set in production. '
+                'sso-consumer: SSO_EXPECTED_HOST or SSO_EXPECTED_HOSTS must be set in production. '
                 .'Run `php artisan sso:check` and see README "Production Hardening".'
             );
         }
 
         return $request->getHttpHost();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function configuredExpectedHosts(): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->normalizeHostList(config('sso-consumer.expected_host')),
+            $this->normalizeHostList(config('sso-consumer.expected_hosts')),
+        )));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function normalizeHostList(mixed $value): array
+    {
+        if (is_string($value)) {
+            $value = explode(',', $value);
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map(
+                static fn (mixed $host): string => is_string($host) ? trim($host) : '',
+                $value
+            ),
+            static fn (string $host): bool => $host !== ''
+        ));
     }
 
     private function replayTtlSeconds(int $expiresAt): int

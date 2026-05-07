@@ -39,7 +39,8 @@ Fill in `.env`:
 ```
 SSO_PORTAL_URL=https://sso.example.com
 SSO_SYSTEM_CODE=your-system-code     # must match tenant_registry.system_code on the portal
-SSO_EXPECTED_HOST=admin.example.com  # required in production — see "Production Hardening" below
+SSO_EXPECTED_HOST=admin.example.com  # single callback host, required in production unless SSO_EXPECTED_HOSTS is set
+# SSO_EXPECTED_HOSTS=admin-a.example.com,admin-b.example.com  # multi-tenant callback hosts
 SSO_PORTAL_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
 ```
 
@@ -81,7 +82,7 @@ Ticket is RS256-signed by the portal; consumer must verify using the portal's pu
 | `phone` | string | v2 only | Primary lookup key for v2 tickets |
 | `email` | string | v1 required, v2 optional | Secondary legacy lookup key |
 | `name` | string | optional | Display name from portal/upstream identity |
-| `tenant_domain` | string | ✓ | Must equal `SSO_EXPECTED_HOST` when configured; outside production, falls back to the request host with port |
+| `tenant_domain` | string | ✓ | Must match `SSO_EXPECTED_HOST` or one of `SSO_EXPECTED_HOSTS`; outside production, falls back to the request host with port when neither is configured |
 | `tenant_id` | int | ✓ | |
 | `tenant_system` | string | ✓ | Same as `aud` |
 | `jti` | string | ✓ | 32 hex chars, one-time-use |
@@ -182,7 +183,7 @@ Before enabling portal-issued v2 tickets:
 
 The defaults are safe to use in development, but a production deployment **must** review the following:
 
-1. **`SSO_EXPECTED_HOST` is required.** In production, consume requests fail if this value is missing; `php artisan sso:check` also reports the misconfiguration. Outside production, the consumer can fall back to the request host with port for local testing.
+1. **At least one expected host is required.** In production, set `SSO_EXPECTED_HOST` for a single callback domain or `SSO_EXPECTED_HOSTS` for comma-separated multi-tenant callback domains. Consume requests fail when the expected host list is empty; `php artisan sso:check` also reports the misconfiguration. Outside production, the consumer can fall back to the request host with port for local testing.
 2. **`replay_cache_store` must be a shared, atomic cache** (Redis, Memcached, or Database). The `array` driver gives each PHP worker its own memory, which silently disables replay protection. The `file` driver is not atomic. `php artisan sso:check` enforces this in production.
 3. **The consume route is rate-limited by default** (`throttle:sso-consume`). Each request triggers an RSA signature verification, which is CPU-expensive — without throttling the endpoint is a DoS amplifier. The package registers a default `sso-consume` limiter at 60 requests/minute per IP; override it in `App\Providers\AppServiceProvider::boot()` when your app needs tenant-aware or user-aware limits:
    ```php

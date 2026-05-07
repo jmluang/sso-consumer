@@ -121,8 +121,8 @@ class CheckConfigCommand extends Command
      */
     private function checkExpectedHost(): array
     {
-        $host = config('sso-consumer.expected_host');
-        $isConfigured = is_string($host) && trim($host) !== '';
+        $hosts = $this->configuredExpectedHosts();
+        $isConfigured = $hosts !== [];
 
         if (app()->isProduction()) {
             return [
@@ -137,6 +137,39 @@ class CheckConfigCommand extends Command
             'expected host',
             $isConfigured ? 'configured' : 'optional outside production',
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function configuredExpectedHosts(): array
+    {
+        return array_values(array_unique(array_merge(
+            $this->normalizeHostList(config('sso-consumer.expected_host')),
+            $this->normalizeHostList(config('sso-consumer.expected_hosts')),
+        )));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function normalizeHostList(mixed $value): array
+    {
+        if (is_string($value)) {
+            $value = explode(',', $value);
+        }
+
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map(
+                static fn (mixed $host): string => is_string($host) ? trim($host) : '',
+                $value
+            ),
+            static fn (string $host): bool => $host !== ''
+        ));
     }
 
     /**

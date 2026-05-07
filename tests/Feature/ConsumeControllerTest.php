@@ -86,6 +86,27 @@ class ConsumeControllerTest extends TestCase
         $response->assertRedirect('/admin-app/dashboard');
     }
 
+    public function test_configured_expected_hosts_allow_multiple_tenant_domains(): void
+    {
+        Event::fake();
+        config()->set('sso-consumer.expected_hosts', [
+            'tenant-a.test',
+            'tenant-b.test',
+        ]);
+        $claims = TicketFactory::valid([
+            'tenant_domain' => 'tenant-b.test',
+        ])[1];
+        $this->bindVerifierExpectingHost([
+            'tenant-a.test',
+            'tenant-b.test',
+        ], $claims);
+        $this->bindResolverReturning(new GenericUser(['id' => 123, 'email' => $claims['email']]));
+
+        $response = $this->get('http://spoofed.example.test/admin-app/sso/consume?ticket=header.payload.signature');
+
+        $response->assertRedirect('/admin-app/dashboard');
+    }
+
     public function test_replay_ttl_includes_leeway_and_minimum_floor(): void
     {
         Event::fake();
@@ -476,7 +497,7 @@ class ConsumeControllerTest extends TestCase
              */
             public function __construct(private readonly array $claims) {}
 
-            public function verify(string $ticket, string $requestHost): array
+            public function verify(string $ticket, string|array $requestHost): array
             {
                 return $this->claims;
             }
@@ -489,7 +510,7 @@ class ConsumeControllerTest extends TestCase
         {
             public function __construct(private readonly SsoConsumerException $exception) {}
 
-            public function verify(string $ticket, string $requestHost): array
+            public function verify(string $ticket, string|array $requestHost): array
             {
                 throw $this->exception;
             }
@@ -497,21 +518,23 @@ class ConsumeControllerTest extends TestCase
     }
 
     /**
+     * @param  string|array<int, string>  $expectedHost
      * @param  array<string, mixed>  $claims
      */
-    private function bindVerifierExpectingHost(string $expectedHost, array $claims): void
+    private function bindVerifierExpectingHost(string|array $expectedHost, array $claims): void
     {
         $this->app->instance(TicketVerifier::class, new class($expectedHost, $claims) extends TicketVerifier
         {
             /**
+             * @param  string|array<int, string>  $expectedHost
              * @param  array<string, mixed>  $claims
              */
             public function __construct(
-                private readonly string $expectedHost,
+                private readonly string|array $expectedHost,
                 private readonly array $claims,
             ) {}
 
-            public function verify(string $ticket, string $requestHost): array
+            public function verify(string $ticket, string|array $requestHost): array
             {
                 Assert::assertSame($this->expectedHost, $requestHost);
 

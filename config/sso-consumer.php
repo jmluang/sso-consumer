@@ -20,7 +20,19 @@ return [
     | on the portal; verified against the JWT `aud` claim.
     */
     'system_code' => env('SSO_SYSTEM_CODE'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Expected Callback Hosts
+    |--------------------------------------------------------------------------
+    | Keep expected_host for single-domain consumers. Use expected_hosts when a
+    | multi-tenant consumer receives SSO callbacks on multiple tenant domains.
+    */
     'expected_host' => env('SSO_EXPECTED_HOST'),
+    'expected_hosts' => array_values(array_filter(
+        array_map('trim', explode(',', (string) env('SSO_EXPECTED_HOSTS', ''))),
+        static fn (string $host): bool => $host !== ''
+    )),
 
     /*
     |--------------------------------------------------------------------------

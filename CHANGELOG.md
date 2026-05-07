@@ -2,6 +2,33 @@
 
 All notable changes to `jmluang/sso-consumer` will be documented in this file.
 
+## v0.0.8 - 2026-05-07
+
+### Added
+
+- Added `SSO_EXPECTED_HOSTS` / `sso-consumer.expected_hosts` for consumers that
+  receive SSO callbacks on multiple tenant domains.
+
+### Changed
+
+- `tenant_domain` validation now accepts either the legacy single
+  `SSO_EXPECTED_HOST` value or one of the comma-separated `SSO_EXPECTED_HOSTS`
+  values. Production deployments still require at least one explicit expected
+  host and will not fall back to the incoming request `Host` header.
+- `php artisan sso:check` now validates the normalized expected-host list, so
+  single-domain consumers can keep `SSO_EXPECTED_HOST` and multi-tenant
+  consumers can switch to `SSO_EXPECTED_HOSTS=tenant-a.example.com,tenant-b.example.com`.
+
+### Upgrade Notes
+
+- Applications using `SSO_EXPECTED_HOST` can upgrade from `v0.0.7` without
+  changing their environment variables.
+- Multi-tenant applications with independent callback domains should configure
+  `SSO_EXPECTED_HOSTS` instead of loosening host validation.
+- Applications that subclass or replace `TicketVerifier` and override
+  `verify()` must update the second parameter type from `string` to
+  `string|array`.
+
 ## v0.0.6 - 2026-05-01
 
 Security Update

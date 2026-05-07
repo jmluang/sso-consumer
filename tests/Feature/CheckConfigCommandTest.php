@@ -26,6 +26,25 @@ class CheckConfigCommandTest extends TestCase
             ->assertExitCode(0);
     }
 
+    public function test_ready_configuration_accepts_multiple_expected_hosts(): void
+    {
+        Http::fake([
+            'https://sso.test' => Http::response('', 302),
+        ]);
+        config()->set('sso-consumer.expected_host', null);
+        config()->set('sso-consumer.expected_hosts', [
+            'tenant-a.test',
+            'tenant-b.test',
+        ]);
+        config()->set('sso-consumer.resolver', FakeSsoUserResolver::class);
+        config()->set('sso-consumer.consume_middleware', []);
+
+        $this->artisan('sso:check')
+            ->expectsOutputToContain('expected host')
+            ->expectsOutputToContain('configured')
+            ->assertExitCode(0);
+    }
+
     public function test_production_configuration_requires_expected_host(): void
     {
         Http::fake([
